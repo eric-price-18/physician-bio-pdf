@@ -1167,17 +1167,24 @@
         if (/^Locations$/i.test(v)) idxLocations = i;
       }
       if (idxLocations < 0) return [];
-
+    
       const block = [];
       for (let i = idxLocations + 1; i < rawLines.length; i++) {
         const s = (rawLines[i] || "").trim();
         if (!s) continue;
         if (/^show more$/i.test(s) || /^show less$/i.test(s)) continue; // never show these
         if (/MapLibre|OpenStreetMap/i.test(s)) continue;                 // map credit junk
-        if (/^(experience|insurance|reviews?|expertise|education|board certifications?)$/i.test(s)) break;
+        if (
+          /^(experience|expertise|education|insurance|reviews?|ratings|board certifications?)$/i.test(s) ||
+          /^ratings & reviews/i.test(s) ||
+          /^schedule appointment/i.test(s) ||
+          /^schedule an appointment/i.test(s)
+        ) {
+          break;
+        }
         block.push(s);
       }
-
+    
       const locations = [];
       let i = 0;
       while (i < block.length) {
@@ -1186,7 +1193,7 @@
         let address = "";
         let phone = "";
         let fax = "";
-
+    
         // Next non-phone line is usually the address
         if (
           i + 1 < block.length &&
@@ -1198,7 +1205,7 @@
         } else {
           i += 1;
         }
-
+    
         // Consume phone/fax lines for this location
         while (
           i < block.length &&
@@ -1211,9 +1218,9 @@
           if (mFax) fax = mFax[1].trim();
           i++;
         }
-
+    
         if (!name && !address && !phone && !fax) continue;
-
+    
         locations.push({
           name: normalizeSpaces(name),
           address: normalizeSpaces(address),
@@ -1221,10 +1228,10 @@
           fax
         });
       }
-
+    
       return locations;
     }
-
+    
     /* ============================================================
        Top-level parse function
        ============================================================ */
@@ -1246,7 +1253,7 @@
           break;
         }
       }
-
+      
       // Languages
       let languages = "";
       let idxLang = findHeading(rawLines, ["Languages", "Language"]);
@@ -1262,16 +1269,25 @@
           "age groups seen",
           "locations",
           "experience",
+          "expertise",
+          "conditions treated",
+          "treatments & procedures",
+          "treatments and procedures",
+          "procedures",
           "insurance",
+          "ratings & reviews",
+          "ratings",
           "reviews",
           "board certifications",
-          "memberships"
+          "memberships",
+          "schedule appointment",
+          "schedule an appointment"
         ]);
         const langLine =
           joinBlock(block).trim() || (rawLines[idxLang].split(":")[1] || "");
         languages = parseLanguages(langLine);
       }
-
+      
       // Gender
       let gender = "";
       let idxGender = findHeading(rawLines, ["Gender"]);
@@ -1283,40 +1299,71 @@
           "about",
           "background",
           "education",
+          "locations",
+          "experience",
+          "expertise",
+          "insurance",
+          "ratings & reviews",
+          "ratings",
+          "reviews",
           "board certifications",
-          "memberships"
+          "memberships",
+          "schedule appointment",
+          "schedule an appointment"
         ]);
         gender = block[0]
           ? normalizeSpaces(block[0])
           : (rawLines[idxGender].split(":")[1] || "").trim();
       }
-
+      
       // Titles
       let titles = [];
       let idxTitles = findHeading(rawLines, ["Professional Titles"]);
       if (idxTitles >= 0) {
         const block = extractHeadingBlock(rawLines, idxTitles, [
           "primary academic title",
+          "languages",
+          "gender",
           "background",
           "about",
           "education",
+          "locations",
+          "experience",
+          "expertise",
+          "insurance",
+          "ratings & reviews",
+          "ratings",
+          "reviews",
           "board certifications",
-          "memberships"
+          "memberships",
+          "schedule appointment",
+          "schedule an appointment"
         ]);
         titles = parseList(block);
       }
-
+      
       // Academic title
       let academicTitle = "";
       let idxAcademic = findHeading(rawLines, ["Primary Academic Title"]);
       if (idxAcademic >= 0) {
         const block = extractHeadingBlock(rawLines, idxAcademic, [
           "professional titles",
+          "languages",
+          "gender",
           "background",
           "about",
           "education",
+          "locations",
+          "experience",
+          "expertise",
+          "insurance",
+          "ratings & reviews",
+          "ratings",
+          "reviews",
           "board certifications",
-          "memberships"
+          "memberships",
+          "schedule appointment",
+          "schedule an appointment"
         ]);
         academicTitle = block[0]
           ? normalizeSpaces(block[0])
@@ -1330,7 +1377,7 @@
         );
         if (fallback) academicTitle = normalizeSpaces(fallback);
       }
-
+      
       // Background / About
       let background = "";
       let idxBackground = findHeading(rawLines, ["Background"]);
@@ -1343,7 +1390,14 @@
           "selected publications",
           "locations",
           "experience",
+          "expertise",
+          "conditions treated",
+          "treatments & procedures",
+          "treatments and procedures",
+          "procedures",
           "insurance",
+          "ratings & reviews",
+          "ratings",
           "reviews",
           // extra headings we don't want in the PDF
           "centers and institutes",
@@ -1352,7 +1406,20 @@
           "research interests",
           "lab website",
           "x (twitter)",
-          "twitter"
+          "twitter",
+          "schedule appointment",
+          "schedule an appointment",
+          "language assistance available",
+          "contact & privacy information",
+          "price transparency",
+          "terms & conditions of use",
+          "non-discrimination notice",
+          "follow on facebook",
+          "follow on twitter",
+          "follow on linkedin",
+          "follow on instagram",
+          "follow on youtube",
+          "follow on weibo"
         ]);
         background = joinBlock(block);
       } else {
@@ -1361,7 +1428,14 @@
           const block = extractHeadingBlock(rawLines, idxAbout, [
             "locations",
             "experience",
+            "expertise",
+            "conditions treated",
+            "treatments & procedures",
+            "treatments and procedures",
+            "procedures",
             "insurance",
+            "ratings & reviews",
+            "ratings",
             "reviews",
             "education",
             "board certifications",
@@ -1374,7 +1448,11 @@
             "research interests",
             "lab website",
             "x (twitter)",
-            "twitter"
+            "twitter",
+            "schedule appointment",
+            "schedule an appointment",
+            "language assistance available",
+            "contact & privacy information"
           ]);
           background = joinBlock(block);
         }
@@ -1391,12 +1469,21 @@
           "selected publications",
           "locations",
           "experience",
+          "expertise",
+          "conditions treated",
+          "treatments & procedures",
+          "treatments and procedures",
+          "procedures",
           "insurance",
-          "reviews"
+          "ratings & reviews",
+          "ratings",
+          "reviews",
+          "schedule appointment",
+          "schedule an appointment"
         ]);
         education = parseEducation(block);
       }
-
+      
       // Board certifications
       let certifications = [];
       let idxCerts = findHeading(rawLines, ["Board Certifications", "Board Certification"]);
@@ -1408,14 +1495,21 @@
           "selected publications",
           "locations",
           "experience",
+          "expertise",
+          "conditions treated",
+          "treatments & procedures",
+          "treatments and procedures",
+          "procedures",
           "insurance",
-          "ratings & reviews",   // ← NEW
-          "reviews"
+          "ratings & reviews",   // <-- key fix for your case
+          "ratings",
+          "reviews",
+          "schedule appointment",
+          "schedule an appointment"
         ]);
         certifications = parseList(block);
       }
-
-
+      
       // Memberships
       let memberships = [];
       let idxMembers = findHeading(rawLines, ["Memberships", "Membership"]);
@@ -1427,12 +1521,21 @@
           "selected publications",
           "locations",
           "experience",
+          "expertise",
+          "conditions treated",
+          "treatments & procedures",
+          "treatments and procedures",
+          "procedures",
           "insurance",
-          "reviews"
+          "ratings & reviews",
+          "ratings",
+          "reviews",
+          "schedule appointment",
+          "schedule an appointment"
         ]);
         memberships = parseList(block);
       }
-
+      
       const locations = parseLocations(rawLines);
 
       // Derive credentials from "Name, Credentials" if we haven't yet
