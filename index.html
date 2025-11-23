@@ -1640,30 +1640,41 @@
       }
 
       if (data.locations && data.locations.length) {
+        const indent = `<span style="margin-left: 10px;"></span>`;
+      
         const blocks = data.locations.map((loc, index) => {
           let lines = [];
-
+      
           const locName = cleanLine(loc.name);
           const address = cleanLine(loc.address);
           const phone = cleanLine(loc.phone);
           const fax = cleanLine(loc.fax);
-
+      
           const numberPrefix = (index + 1) + ". ";
           
+          // First line: name only (no indent)
           let firstLine = `<strong>${numberPrefix}${locName || "Location"}</strong>`;
-          if (address) firstLine += address;
           lines.push(firstLine);
-
+      
+          // Address line WITH indent
+          if (address) {
+            lines.push(`${indent}${address}`);
+          }
+      
+          // Phone / Fax with indent
           const phoneFax = [];
           if (phone) phoneFax.push("Phone: " + phone);
           if (fax) phoneFax.push("Fax: " + fax);
-          if (phoneFax.length) lines.push(phoneFax.join(" • "));
-
+          if (phoneFax.length) {
+            lines.push(`${indent}${phoneFax.join(" • ")}`);
+          }
+      
           return lines.join("<br>");
         });
-
+      
         // Exactly one blank line between locations
         locationsField.innerHTML = blocks.join("<br><br>");
+      
       } else {
         locationsField.textContent = "—";
       }
