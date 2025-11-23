@@ -897,27 +897,44 @@
     function isLikelyName(line) {
       const s = (line || "").trim();
       if (!s) return false;
-
-      // Never treat the site name as the physician name
+    
+      // Never treat the site name or obvious UI chrome as the physician name
       if (/johns hopkins medicine/i.test(s)) return false;
-
-      // 2–4 words, each starting with a capital letter, no comma
-      if (s.includes(",")) return false;
+      if (/loading complete/i.test(s)) return false;
+    
+      // Explicitly exclude common header phrases we never want as names
+      if (/accepting new patients/i.test(s)) return false;
+      if (/out of 5 stars/i.test(s)) return false;
+      if (/ratings?/i.test(s)) return false;
+    
       const parts = s.split(/\s+/);
       if (parts.length < 2 || parts.length > 4) return false;
-
-      return parts.every((p) => /^[A-Z][a-zA-Z.'-]+$/.test(p));
+    
+      function okWord(p) {
+        // Normal case: capitalized word
+        if (/^[A-Z][a-zA-Z.'-]+$/.test(p)) return true;
+    
+        // Allow short lowercase prefix + capital (e.g., "deBettencourt", "vanHouten")
+        if (/^[a-z]{1,3}[A-Z][a-zA-Z.'-]+$/.test(p)) return true;
+    
+        return false;
+      }
+    
+      return parts.every(okWord);
     }
+
 
     function isNoiseForSpecialty(line) {
       const s = (line || "").trim();
       if (!s) return true;
       if (/Accepting New Patients/i.test(s)) return true;
       if (/Online Booking/i.test(s)) return true;
+      if (/out of 5 stars?/i.test(s)) return true; // rating line
       if (/ratings|reviews/i.test(s)) return true;
       if (/Highlights|Age Groups Seen|Languages|In-Network Plans/i.test(s)) return true;
       return false;
     }
+
 
     // Try to reconstruct name / credentials / specialty from the pasted text
     function findNameAndSpecialty(rawLines) {
