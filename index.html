@@ -1649,9 +1649,10 @@
           const fax = cleanLine(loc.fax);
 
           const numberPrefix = (index + 1) + ". ";
-          lines.push(`<strong>${numberPrefix}${locName || "Location"}</strong>`);
-
-          if (address) lines.push(address);
+          
+          let firstLine = `<strong>${numberPrefix}${locName || "Location"}</strong>`;
+          if (address) firstLine += address;
+          lines.push(firstLine);
 
           const phoneFax = [];
           if (phone) phoneFax.push("Phone: " + phone);
