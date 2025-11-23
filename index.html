@@ -1682,6 +1682,63 @@
       const bgEl = document.getElementById("backgroundField");
       bgEl.textContent = data.background || "—";
 
+      // ===== Auto-hide empty sections (except Background) =====
+      (function autoHideEmptySections() {
+        const autoHideKeys = new Set([
+          "affiliations",
+          "languages",
+          "gender",
+          "titles",
+          "academic",
+          "education",
+          "certifications",
+          "memberships",
+          "locations"
+        ]);
+      
+        const fields = document.querySelectorAll(".field");
+      
+        fields.forEach((field) => {
+          const key = field.dataset.field;
+          if (!key) return;
+      
+          // Never auto-hide Background
+          if (key === "background") return;
+      
+          // Only auto-hide the specific sections listed above
+          if (!autoHideKeys.has(key)) return;
+      
+          const valueEl = field.querySelector(".value, .list");
+          if (!valueEl) return;
+      
+          let isEmpty = false;
+      
+          if (valueEl.tagName === "UL") {
+            // Lists: empty if no <li> or only "—"
+            const items = Array.from(valueEl.querySelectorAll("li"));
+            if (
+              items.length === 0 ||
+              (items.length === 1 && items[0].textContent.trim() === "—")
+            ) {
+              isEmpty = true;
+            }
+          } else {
+            // Normal value
+            const text = valueEl.textContent.trim();
+            if (!text || text === "—") {
+              isEmpty = true;
+            }
+          }
+      
+          if (isEmpty) {
+            field.classList.add("hidden");
+          } else {
+            field.classList.remove("hidden");
+          }
+        });
+      })();
+
+      
       // After updating content, make sure float + page breaks are correct
       ensureBackgroundClears();
     }
