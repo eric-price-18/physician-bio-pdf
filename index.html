@@ -847,28 +847,20 @@
       return block.map(normalizeSpaces).join(" ");
     }
 
-    // Heuristic to pair institutions with details in the education block
     function parseEducation(block) {
       const items = [];
-      let i = 0;
-      while (i < block.length) {
-        let inst = block[i];
-        let detail = "";
-        if (
-          i + 1 < block.length &&
-          /Residency|Fellowship|Medical Education|Chief|Cardiology|Medicine|BMBCh|BM BCh|MD|DO|PhD|Board/i.test(
-            block[i + 1]
-          )
-        ) {
-          detail = block[i + 1];
-          i += 2;
+      for (let i = 0; i < block.length; i += 2) {
+        let line1 = normalizeSpaces(block[i] || "");
+        let line2 = normalizeSpaces(block[i + 1] || "");
+    
+        // skip if both are empty
+        if (!line1 && !line2) continue;
+    
+        if (line1 && line2) {
+          items.push(`${line1} — ${line2}`);
         } else {
-          i += 1;
-        }
-        inst = normalizeSpaces(inst);
-        detail = normalizeSpaces(detail);
-        if (inst) {
-          items.push(detail ? `${inst} — ${detail}` : inst);
+          // odd leftover line, just include whatever exists
+          items.push(line1 || line2);
         }
       }
       return items;
