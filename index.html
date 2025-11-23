@@ -1153,11 +1153,11 @@
 
       return { name, creds, specialty };
     }
-
+    
     /* ============================================================
        Location parsing
        ============================================================ */
-
+    
     function parseLocations(rawLines) {
       // Use the *last* occurrence of a standalone "Locations" heading,
       // since there's also a navigation tab named Locations near the top.
@@ -1172,24 +1172,34 @@
       for (let i = idxLocations + 1; i < rawLines.length; i++) {
         const s = (rawLines[i] || "").trim();
         if (!s) continue;
-        if (/^show more$/i.test(s) || /^show less$/i.test(s)) continue; // never show these
-        if (/MapLibre|OpenStreetMap/i.test(s)) continue;                 // map credit junk
+    
+        // Skip junk lines we never want to treat as locations
+        if (/^show more$/i.test(s) || /^show less$/i.test(s)) continue;
+        if (/maplibre|openstreetmap/i.test(s)) continue;
+        if (/^get directions$/i.test(s)) continue;
+        if (/^loading booking information complete/i.test(s)) continue;
+        if (/^schedule appointment/i.test(s)) continue;
+        if (/^schedule an appointment/i.test(s)) continue;
+    
+        // Stop when we hit the next big section
         if (
           /^(experience|expertise|education|insurance|reviews?|ratings|board certifications?)$/i.test(s) ||
-          /^ratings & reviews/i.test(s) ||
-          /^schedule appointment/i.test(s) ||
-          /^schedule an appointment/i.test(s)
+          /^ratings & reviews/i.test(s)
         ) {
           break;
         }
+    
         block.push(s);
       }
     
       const locations = [];
       let i = 0;
+    
       while (i < block.length) {
         let name = block[i] || "";
-        name = name.replace(/^\d+\s+/, ""); // strip "1 ", "2 " etc.
+        // Strip any leading numbering like "1 " or "2 "
+        name = name.replace(/^\d+\s+/, "");
+    
         let address = "";
         let phone = "";
         let fax = "";
@@ -1214,11 +1224,14 @@
           const line = block[i];
           const mPhone = line.match(/phone:\s*([0-9().-\s]+)/i);
           if (mPhone) phone = mPhone[1].trim();
+    
           const mFax = line.match(/fax:\s*([0-9().-\s]+)/i);
           if (mFax) fax = mFax[1].trim();
+    
           i++;
         }
     
+        // Skip completely empty entries
         if (!name && !address && !phone && !fax) continue;
     
         locations.push({
