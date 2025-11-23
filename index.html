@@ -2007,6 +2007,12 @@
       const data = parseDoctorText(t);
       populatePreview(data);
 
+      // Scroll to preview controls after parsing
+      document.querySelector(".preview-controls")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+
       // Turn on inline editing after a successful parse
       editToggle.checked = true;
       editToggle.dispatchEvent(new Event("change"));
