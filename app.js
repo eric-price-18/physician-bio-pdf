@@ -120,6 +120,7 @@ const GLOBAL_STOP_HEADINGS = [
   "reviews",
   "graduate program affiliations",
   "linkedin",
+  "professional activities",
 
   // Research / trials
   "clinical trial keywords",
