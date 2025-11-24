@@ -1179,6 +1179,12 @@ document.getElementById("clearBtn").addEventListener("click", () => {
   photoPreviewImg.style.display = "none";
   photoPreviewText.style.display = "block";
 
+   // Scroll back to the top
+   window.scrollTo({
+     top: 0,
+     behavior: "smooth"
+   });
+
   // Disable inline editing
   editToggle.checked = false;
   editToggle.dispatchEvent(new Event("change"));
