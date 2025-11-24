@@ -822,11 +822,77 @@
       return uniq.join(", ");
     }
 
-    function extractHeadingBlock(rawLines, startIdx, stopHeadings) {
+    // Global list of headings that indicate the start of a new section.
+    // All comparisons are done case-insensitively on line.startsWith(heading).
+    const GLOBAL_STOP_HEADINGS = [
+      // Core bio structure
+      "languages",
+      "language",
+      "gender",
+      "professional titles",
+      "primary academic title",
+      "about",
+      "background",
+      "education",
+      "board certifications",
+      "board certification",
+      "memberships",
+      "membership",
+      "videos",
+      "selected publications",
+      "locations",
+      "experience",
+      "expertise",
+      "conditions treated",
+      "treatments & procedures",
+      "treatments and procedures",
+      "procedures",
+      "in-network plans",
+      "age groups seen",
+      "insurance",
+      "ratings & reviews",
+      "ratings",
+      "reviews",
+    
+      // Research / trials
+      "clinical trial keywords",
+      "clinical trials summary",
+      "research interests",
+      "lab website",
+    
+      // Misc JH sections we never want inside blocks
+      "centers and institutes",
+      "recent news articles and media coverage",
+      "additional academic titles",
+      "lab website",
+      "x (twitter)",
+      "twitter",
+    
+      // Footer / chrome
+      "schedule appointment",
+      "schedule an appointment",
+      "language assistance available",
+      "contact & privacy information",
+      "price transparency",
+      "terms & conditions of use",
+      "non-discrimination notice",
+      "follow on facebook",
+      "follow on twitter",
+      "follow on linkedin",
+      "follow on instagram",
+      "follow on youtube",
+      "follow on weibo"
+    ].map((h) => h.toLowerCase());
+
+    function extractHeadingBlock(rawLines, startIdx, extraStopHeadings) {
+      const extra = (extraStopHeadings || []).map((h) => h.toLowerCase());
+      const stops = GLOBAL_STOP_HEADINGS.concat(extra);
+    
       const out = [];
       for (let i = startIdx + 1; i < rawLines.length; i++) {
-        const ln = rawLines[i];
-        if (stopHeadings.some((h) => ln.toLowerCase().startsWith(h))) break;
+        const ln = rawLines[i] || "";
+        const lower = ln.toLowerCase();
+        if (stops.some((h) => lower.startsWith(h))) break;
         out.push(ln);
       }
       return out;
@@ -1254,31 +1320,7 @@
       let languages = "";
       let idxLang = findHeading(rawLines, ["Languages", "Language"]);
       if (idxLang >= 0) {
-        const block = extractHeadingBlock(rawLines, idxLang, [
-          "gender",
-          "professional titles",
-          "primary academic title",
-          "about",
-          "background",
-          "education",
-          "in-network plans",
-          "age groups seen",
-          "locations",
-          "experience",
-          "expertise",
-          "conditions treated",
-          "treatments & procedures",
-          "treatments and procedures",
-          "procedures",
-          "insurance",
-          "ratings & reviews",
-          "ratings",
-          "reviews",
-          "board certifications",
-          "memberships",
-          "schedule appointment",
-          "schedule an appointment"
-        ]);
+        const block = extractHeadingBlock(rawLines, idxLang);
         const langLine =
           joinBlock(block).trim() || (rawLines[idxLang].split(":")[1] || "");
         languages = parseLanguages(langLine);
@@ -1288,25 +1330,7 @@
       let gender = "";
       let idxGender = findHeading(rawLines, ["Gender"]);
       if (idxGender >= 0) {
-        const block = extractHeadingBlock(rawLines, idxGender, [
-          "languages",
-          "professional titles",
-          "primary academic title",
-          "about",
-          "background",
-          "education",
-          "locations",
-          "experience",
-          "expertise",
-          "insurance",
-          "ratings & reviews",
-          "ratings",
-          "reviews",
-          "board certifications",
-          "memberships",
-          "schedule appointment",
-          "schedule an appointment"
-        ]);
+        const block = extractHeadingBlock(rawLines, idxGender);
         gender = block[0]
           ? normalizeSpaces(block[0])
           : (rawLines[idxGender].split(":")[1] || "").trim();
@@ -1316,25 +1340,7 @@
       let titles = [];
       let idxTitles = findHeading(rawLines, ["Professional Titles"]);
       if (idxTitles >= 0) {
-        const block = extractHeadingBlock(rawLines, idxTitles, [
-          "primary academic title",
-          "languages",
-          "gender",
-          "background",
-          "about",
-          "education",
-          "locations",
-          "experience",
-          "expertise",
-          "insurance",
-          "ratings & reviews",
-          "ratings",
-          "reviews",
-          "board certifications",
-          "memberships",
-          "schedule appointment",
-          "schedule an appointment"
-        ]);
+        const block = extractHeadingBlock(rawLines, idxTitles);
         titles = parseList(block);
       }
       
@@ -1342,25 +1348,7 @@
       let academicTitle = "";
       let idxAcademic = findHeading(rawLines, ["Primary Academic Title"]);
       if (idxAcademic >= 0) {
-        const block = extractHeadingBlock(rawLines, idxAcademic, [
-          "professional titles",
-          "languages",
-          "gender",
-          "background",
-          "about",
-          "education",
-          "locations",
-          "experience",
-          "expertise",
-          "insurance",
-          "ratings & reviews",
-          "ratings",
-          "reviews",
-          "board certifications",
-          "memberships",
-          "schedule appointment",
-          "schedule an appointment"
-        ]);
+        const block = extractHeadingBlock(rawLines, idxAcademic);
         academicTitle = block[0]
           ? normalizeSpaces(block[0])
           : (rawLines[idxAcademic].split(":")[1] || "").trim();
@@ -1378,78 +1366,12 @@
       let background = "";
       let idxBackground = findHeading(rawLines, ["Background"]);
       if (idxBackground >= 0) {
-        const block = extractHeadingBlock(rawLines, idxBackground, [
-          "education",
-          "board certifications",
-          "memberships",
-          "videos",
-          "selected publications",
-          "locations",
-          "experience",
-          "expertise",
-          "conditions treated",
-          "treatments & procedures",
-          "treatments and procedures",
-          "procedures",
-          "insurance",
-          "ratings & reviews",
-          "ratings",
-          "reviews",
-          // extra headings we don't want in the PDF
-          "centers and institutes",
-          "recent news articles and media coverage",
-          "additional academic titles",
-          "research interests",
-          "lab website",
-          "x (twitter)",
-          "twitter",
-          "schedule appointment",
-          "schedule an appointment",
-          "language assistance available",
-          "contact & privacy information",
-          "price transparency",
-          "terms & conditions of use",
-          "non-discrimination notice",
-          "follow on facebook",
-          "follow on twitter",
-          "follow on linkedin",
-          "follow on instagram",
-          "follow on youtube",
-          "follow on weibo"
-        ]);
+        const block = extractHeadingBlock(rawLines, idxBackground);
         background = joinBlock(block);
       } else {
         let idxAbout = findHeading(rawLines, ["About"]);
         if (idxAbout >= 0) {
-          const block = extractHeadingBlock(rawLines, idxAbout, [
-            "locations",
-            "experience",
-            "expertise",
-            "conditions treated",
-            "treatments & procedures",
-            "treatments and procedures",
-            "procedures",
-            "insurance",
-            "ratings & reviews",
-            "ratings",
-            "reviews",
-            "education",
-            "board certifications",
-            "memberships",
-            "videos",
-            "selected publications",
-            "centers and institutes",
-            "recent news articles and media coverage",
-            "additional academic titles",
-            "research interests",
-            "lab website",
-            "x (twitter)",
-            "twitter",
-            "schedule appointment",
-            "schedule an appointment",
-            "language assistance available",
-            "contact & privacy information"
-          ]);
+          const block = extractHeadingBlock(rawLines, idxAbout);
           background = joinBlock(block);
         }
       }
@@ -1458,25 +1380,7 @@
       let education = [];
       let idxEducation = findHeading(rawLines, ["Education"]);
       if (idxEducation >= 0) {
-        const block = extractHeadingBlock(rawLines, idxEducation, [
-          "board certifications",
-          "memberships",
-          "videos",
-          "selected publications",
-          "locations",
-          "experience",
-          "expertise",
-          "conditions treated",
-          "treatments & procedures",
-          "treatments and procedures",
-          "procedures",
-          "insurance",
-          "ratings & reviews",
-          "ratings",
-          "reviews",
-          "schedule appointment",
-          "schedule an appointment"
-        ]);
+        const block = extractHeadingBlock(rawLines, idxEducation);
         education = parseEducation(block);
       }
       
@@ -1484,25 +1388,7 @@
       let certifications = [];
       let idxCerts = findHeading(rawLines, ["Board Certifications", "Board Certification"]);
       if (idxCerts >= 0) {
-        const block = extractHeadingBlock(rawLines, idxCerts, [
-          "education",
-          "memberships",
-          "videos",
-          "selected publications",
-          "locations",
-          "experience",
-          "expertise",
-          "conditions treated",
-          "treatments & procedures",
-          "treatments and procedures",
-          "procedures",
-          "insurance",
-          "ratings & reviews",   // <-- key fix for your case
-          "ratings",
-          "reviews",
-          "schedule appointment",
-          "schedule an appointment"
-        ]);
+        const block = extractHeadingBlock(rawLines, idxCerts);
         certifications = parseEducation(block);
       }
       
@@ -1510,25 +1396,7 @@
       let memberships = [];
       let idxMembers = findHeading(rawLines, ["Memberships", "Membership"]);
       if (idxMembers >= 0) {
-        const block = extractHeadingBlock(rawLines, idxMembers, [
-          "education",
-          "board certifications",
-          "videos",
-          "selected publications",
-          "locations",
-          "experience",
-          "expertise",
-          "conditions treated",
-          "treatments & procedures",
-          "treatments and procedures",
-          "procedures",
-          "insurance",
-          "ratings & reviews",
-          "ratings",
-          "reviews",
-          "schedule appointment",
-          "schedule an appointment"
-        ]);
+        const block = extractHeadingBlock(rawLines, idxMembers);
         memberships = parseList(block);
       }
       
