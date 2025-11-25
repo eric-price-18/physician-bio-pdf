@@ -873,6 +873,31 @@ function populatePreview(data) {
    Page guide / layout helpers
    ============================================================ */
 
+// Compute the approximate DOM pixel height that corresponds to
+// one PDF page of content (between the top and bottom margins).
+function getPageHeightPx(pageEl) {
+  const el = pageEl || document.getElementById("pdfPage");
+  if (!el) return 0;
+
+  // Width of your on-screen "page" in CSS pixels
+  const pageWidthPx = el.clientWidth || el.offsetWidth;
+  if (!pageWidthPx) return 0;
+
+  // jsPDF letter size in points (default in your export)
+  const pageWidthPt = 612;   // 8.5in * 72
+  const pageHeightPt = 792;  // 11in * 72
+
+  // Same margins you use in the PDF export code
+  const marginPt = 36;       // 0.5 inch
+  const usableHeightPt = pageHeightPt - marginPt * 2;
+  const imgWidthPt = pageWidthPt - marginPt * 2;
+
+  // Map usable PDF height to DOM pixels
+  // (html2canvas scale cancels out when you compare to element width)
+  const pageHeightPx = (usableHeightPt * pageWidthPx) / imgWidthPt;
+  return pageHeightPx;
+}
+
 function updatePageGuides() {
   const pageEl = document.getElementById("pdfPage");
   if (!pageEl) return;
@@ -880,13 +905,12 @@ function updatePageGuides() {
   // Remove existing guides
   pageEl.querySelectorAll(".page-guide").forEach((el) => el.remove());
 
-  const styles = getComputedStyle(document.documentElement);
-  const raw = styles.getPropertyValue("--page-height").trim();
-  const pageHeight = parseInt(raw, 10);
+  const pageHeight = getPageHeightPx(pageEl);
   if (!pageHeight) return;
 
   const totalHeight = pageEl.scrollHeight;
   let page = 2;
+
   for (let offset = pageHeight; offset < totalHeight; offset += pageHeight) {
     const guide = document.createElement("div");
     guide.className = "page-guide";
@@ -906,9 +930,7 @@ function applySectionPageBreaks() {
   const pageEl = document.getElementById("pdfPage");
   if (!pageEl) return;
 
-  const styles = getComputedStyle(document.documentElement);
-  const raw = styles.getPropertyValue("--page-height").trim();
-  const pageHeight = parseInt(raw, 10);
+  const pageHeight = getPageHeightPx(pageEl);
   if (!pageHeight) return;
 
   const fields = Array.from(pageEl.querySelectorAll(".field"));
@@ -1086,7 +1108,12 @@ fontSizeSlider.addEventListener("input", (e) => {
     el.style.fontSize = size + 1 + "px";
   });
 
-  setTimeout(ensureBackgroundClears, 50);
+  // NEW — recalc after fonts fully reflow
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      ensureBackgroundClears();
+    });
+  });
 });
 
 editToggle.addEventListener("change", (e) => {
@@ -1347,3 +1374,7 @@ window.addEventListener("load", () => {
   attachInlineEditListeners();
   setTimeout(ensureBackgroundClears, 50);
 });
+
+window.addEventListener("resize", debounce(() => {
+  ensureBackgroundClears();
+}, 150));
