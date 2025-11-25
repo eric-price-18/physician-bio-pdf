@@ -873,29 +873,21 @@ function populatePreview(data) {
    Page guide / layout helpers
    ============================================================ */
 
-// Compute the approximate DOM pixel height that corresponds to
-// one PDF page of content (between the top and bottom margins).
+// Compute the DOM pixel height corresponding to one full 8.5x11 page.
+// This matches the aspect ratio of the .page element and browser print pages.
 function getPageHeightPx(pageEl) {
   const el = pageEl || document.getElementById("pdfPage");
   if (!el) return 0;
 
-  // Width of your on-screen "page" in CSS pixels
   const pageWidthPx = el.clientWidth || el.offsetWidth;
   if (!pageWidthPx) return 0;
 
-  // jsPDF letter size in points (default in your export)
+  // Letter size in points
   const pageWidthPt = 612;   // 8.5in * 72
   const pageHeightPt = 792;  // 11in * 72
 
-  // Same margins you use in the PDF export code
-  const marginPt = 36;       // 0.5 inch
-  const usableHeightPt = pageHeightPt - marginPt * 2;
-  const imgWidthPt = pageWidthPt - marginPt * 2;
-
-  // Map usable PDF height to DOM pixels
-  // (html2canvas scale cancels out when you compare to element width)
-  const pageHeightPx = (usableHeightPt * pageWidthPx) / imgWidthPt;
-  return pageHeightPx;
+  // Keep the same aspect ratio: height = width * (792 / 612)
+  return (pageHeightPt * pageWidthPx) / pageWidthPt;
 }
 
 function updatePageGuides() {
