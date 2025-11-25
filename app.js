@@ -154,6 +154,124 @@ const GLOBAL_STOP_HEADINGS = [
   "follow on weibo"
 ].map((h) => h.toLowerCase());
 
+// Canonical list of credential tokens used in name parsing
+const credTokens = [
+  // Core physician degrees
+  "MD",
+  "DO",
+  "MBBS",
+  "MBBCh",
+  "MBBChBAO",
+  "BMBCh",
+  "BM BCh",
+  "MBChB",
+
+  // Dentistry
+  "DDS",
+  "DMD",
+
+  // Pharmacy
+  "PharmD",
+
+  // Doctoral / research / public health
+  "PhD",
+  "ScD",
+  "DrPH",
+  "DPH",
+
+  // Veterinary
+  "DVM",
+  "VMD",
+  "VetMB",
+
+  // Law / business / admin
+  "JD",
+  "MBA",
+  "MPA",
+  "MSHA",
+
+  // Master’s / science / health science
+  "MA",
+  "MS",
+  "MSc",
+  "MSE",
+  "MAS",
+  "MEd",
+  "MHS",
+  "MPhil",
+  "M Math",
+  "SM",
+  "ScM",
+  "AM",
+  "Laurea",
+  "Master of Biotechnology",
+  "MSCE",
+  "MSCI",
+
+  // Public health & related
+  "MPH",
+  "MSPH",
+  "MHSc",
+
+  // Nursing / advanced practice
+  "DNP",
+  "CNM",
+  "CRNP",
+  "NP",
+  "CNP",
+  "FNP",
+  "APRN",
+
+  // Rehab / therapy
+  "DPT",
+  "MPT",
+  "OTD",
+  "OT",
+  "SLP",
+
+  // Vision / podiatry
+  "OD",
+  "DPM",
+
+  // Genetics / counseling / social work
+  "MGC",
+  "MSW",
+
+  // Informatics / bioethics
+  "MBE",
+  "MBI",
+
+  // Dietetics / nutrition
+  "RD",
+
+  // Other medical / allied
+  "ScM",
+
+  // Existing subspecialty/board-style ones
+  "FACC",
+  "FSCAI",
+
+  // Already-supported degrees that should remain
+  "AuD"
+];
+
+// Escape helper for building regex patterns
+function regexEscape(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Regex that matches any *standalone* stop heading (with optional colon)
+const STOP_HEADING_REGEX = new RegExp(
+  "^(" + GLOBAL_STOP_HEADINGS.map(regexEscape).join("|") + ")(?::)?$",
+  "i"
+);
+
+// Regex that matches any credential token as a whole word
+const CREDENTIAL_REGEX = new RegExp(
+  "\\b(" + credTokens.map(regexEscape).join("|") + ")\\b",
+  "i"
+);
+
 function extractHeadingBlock(rawLines, startIdx, extraStopHeadings) {
   const extra = (extraStopHeadings || []).map((h) => h.toLowerCase());
   const stops = GLOBAL_STOP_HEADINGS.concat(extra);
@@ -261,106 +379,6 @@ function findNameAndSpecialty(rawLines) {
   let creds = "";
   let specialty = "";
 
-  const credTokens = [
-    // Core physician degrees
-    "MD",
-    "DO",
-    "MBBS",
-    "MBBCh",
-    "MBBChBAO",
-    "BMBCh",
-    "BM BCh",
-    "MBChB",
-
-    // Dentistry
-    "DDS",
-    "DMD",
-
-    // Pharmacy
-    "PharmD",
-
-    // Doctoral / research / public health
-    "PhD",
-    "ScD",
-    "DrPH",
-    "DPH",
-
-    // Veterinary
-    "DVM",
-    "VMD",
-    "VetMB",
-
-    // Law / business / admin
-    "JD",
-    "MBA",
-    "MPA",
-    "MSHA",
-
-    // Master’s / science / health science
-    "MA",
-    "MS",
-    "MSc",
-    "MSE",
-    "MAS",
-    "MEd",
-    "MHS",
-    "MPhil",
-    "M Math",
-    "SM",
-    "ScM",
-    "AM",
-    "Laurea",
-    "Master of Biotechnology",
-    "MSCE",
-    "MSCI",
-
-    // Public health & related
-    "MPH",
-    "MSPH",
-    "MHSc",
-
-    // Nursing / advanced practice
-    "DNP",
-    "CNM",
-    "CRNP",
-    "NP",
-    "CNP",
-    "FNP",
-    "APRN",
-
-    // Rehab / therapy
-    "DPT",
-    "MPT",
-    "OTD",
-    "OT",
-    "SLP",
-
-    // Vision / podiatry
-    "OD",
-    "DPM",
-
-    // Genetics / counseling / social work
-    "MGC",
-    "MSW",
-
-    // Informatics / bioethics
-    "MBE",
-    "MBI",
-
-    // Dietetics / nutrition
-    "RD",
-
-    // Other medical / allied
-    "ScM",
-
-    // Existing subspecialty/board-style ones
-    "FACC",
-    "FSCAI",
-
-    // Already-supported degrees that should remain
-    "AuD"
-  ];
-
   // 1) Try the structured header pattern around "Print"
   const idxPrint = rawLines.findIndex((l) => /^Print$/i.test((l || "").trim()));
   const startIdx = idxPrint >= 0 ? idxPrint + 1 : 0;
@@ -423,7 +441,7 @@ function findNameAndSpecialty(rawLines) {
       const candidateCreds = m[3].trim();
 
       // Only accept if the "after comma" part really looks like credentials
-      if (!credTokens.some((t) => new RegExp("\\b" + t + "\\b").test(candidateCreds))) {
+      if (!CREDENTIAL_REGEX.test(candidateCreds)) {
         continue;
       }
 
@@ -454,7 +472,11 @@ function findNameAndSpecialty(rawLines) {
   if (!name) {
     const whole = rawLines.join(" ");
     const nameMatch = whole.match(
-      /([A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+){1,3}),\s*(MD|DO|PhD|MBBS|BMBCh|BM BCh|FACC|FSCAI|MBA|MPH|MS|CRNP|NP|CNP|FNP|DNP|PA-C|AuD)/
+      new RegExp(
+        "([A-Z][a-zA-Z.'-]+(?:\\s+[A-Z][a-zA-Z.'-]+){1,3}),\\s*(" +
+          credTokens.map(regexEscape).join("|") +
+        ")"
+      )
     );
     if (nameMatch) {
       name = nameMatch[1].trim();
@@ -505,11 +527,8 @@ function parseLocations(rawLines) {
     if (/^schedule appointment/i.test(s)) continue;
     if (/^schedule an appointment/i.test(s)) continue;
 
-    // Stop when we hit the next big section
-    if (
-      /^(experience|expertise|education|insurance|reviews?|ratings|board certifications?)$/i.test(s) ||
-      /^ratings & reviews/i.test(s)
-    ) {
+    // Stop when we hit the next big section (based on GLOBAL_STOP_HEADINGS)
+    if (STOP_HEADING_REGEX.test(s)) {
       break;
     }
 
