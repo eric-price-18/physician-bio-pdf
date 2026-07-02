@@ -360,16 +360,104 @@ function isLikelyName(line) {
   return parts.every(okWord);
 }
 
+function isRatingOrReviewLine(line) {
+  const s = normalizeSpaces(line || "");
+  if (!s) return false;
+
+  const hasRatingWords = /\b(rating|ratings|review|reviews|star|stars)\b/i.test(s);
+
+  if (/^(?:rating|ratings|review|reviews|star|stars)$/i.test(s)) return true;
+  if (/out of\s*5/i.test(s)) return true;
+  if (hasRatingWords && /\d/.test(s)) return true;
+  if (/^\(?\s*\d+\s*(?:ratings?|reviews?)\s*\)?$/i.test(s)) return true;
+
+  if (/^\(?\s*[0-5](?:\.\d+)?\s*\)?$/.test(s)) {
+    return true;
+  }
+
+  return false;
+}
+
+function isDecorativeSeparator(line) {
+  const s = normalizeSpaces(line || "");
+  if (!s) return false;
+  if (/^[^\p{L}\p{N}]+$/u.test(s)) return true;
+  return /^(?:[•·*|]+|[-–—]+|â€¢|Â·)+$/.test(s);
+}
+
 
 function isNoiseForSpecialty(line) {
   const s = (line || "").trim();
   if (!s) return true;
+  if (isDecorativeSeparator(s)) return true;
   if (/Accepting New Patients/i.test(s)) return true;
   if (/Online Booking/i.test(s)) return true;
-  if (/out of 5 stars?/i.test(s)) return true; // rating line
+  if (isRatingOrReviewLine(s)) return true;
   if (/ratings|reviews/i.test(s)) return true;
   if (/Highlights|Age Groups Seen|Languages|In-Network Plans/i.test(s)) return true;
   return false;
+}
+
+function extractSpecialtyFromLine(line) {
+  const s = normalizeSpaces(line || "");
+  const match = s.match(
+    /^(?:primary\s+)?(?:clinical\s+)?specialt(?:y|ies)\s*:?\s*(.+)$/i
+  );
+
+  if (!match) return "";
+
+  const specialty = match[1].trim();
+  if (!specialty || isNoiseForSpecialty(specialty)) return "";
+  return specialty;
+}
+
+function isSpecialtyHeading(line) {
+  return /^(?:primary\s+)?(?:clinical\s+)?specialt(?:y|ies):?$/i.test(
+    normalizeSpaces(line || "")
+  );
+}
+
+function isStopHeadingAllowedBeforeSpecialty(line) {
+  return /ratings?|reviews?/i.test(line || "");
+}
+
+function findSpecialtyNear(rawLines, startIdx, name) {
+  const limit = Math.min(startIdx + 14, rawLines.length);
+
+  for (let j = startIdx; j < limit; j++) {
+    const cand = (rawLines[j] || "").trim();
+    if (!cand) continue;
+
+    const inlineSpecialty = extractSpecialtyFromLine(cand);
+    if (inlineSpecialty) return inlineSpecialty;
+
+    if (isSpecialtyHeading(cand)) {
+      for (let k = j + 1; k < limit; k++) {
+        const next = (rawLines[k] || "").trim();
+        if (!next || isNoiseForSpecialty(next)) continue;
+        if (STOP_HEADING_REGEX.test(next)) break;
+        return next;
+      }
+      continue;
+    }
+
+    if (STOP_HEADING_REGEX.test(cand)) {
+      if (isStopHeadingAllowedBeforeSpecialty(cand)) continue;
+      break;
+    }
+
+    if (isNoiseForSpecialty(cand)) continue;
+    if (/johns hopkins/i.test(cand)) continue;
+
+    // Don't treat "Name, Credentials" as a specialty
+    if (name && cand.toLowerCase().includes(name.toLowerCase())) continue;
+
+    if (cand.includes(":")) continue;
+    if (cand.length > 200) continue; // allow long multi-phrase specialties
+    return cand;
+  }
+
+  return "";
 }
 
 
@@ -404,20 +492,7 @@ function findNameAndSpecialty(rawLines) {
       }
     }
 
-    // Find specialty: first short, non-noise line after the name/cred block
-    for (let j = i + 1; j < i + 8 && j < rawLines.length; j++) {
-      const cand = (rawLines[j] || "").trim();
-      if (!cand || isNoiseForSpecialty(cand)) continue;
-      if (/johns hopkins/i.test(cand)) continue;
-
-      // Don't treat "Name, Credentials" as a specialty
-      if (name && cand.toLowerCase().includes(name.toLowerCase())) continue;
-
-      if (cand.includes(":")) continue;
-      if (cand.length > 200) continue; // allow long multi-phrase specialties
-      specialty = cand;
-      break;
-    }
+    specialty = findSpecialtyNear(rawLines, i + 1, name);
 
     break; // done with structured header parse
   }
@@ -448,21 +523,7 @@ function findNameAndSpecialty(rawLines) {
       name = candidateName;
       creds = candidateCreds;
 
-      // Specialty in nearby lines
-      for (let j = i + 1; j < i + 8 && j < rawLines.length; j++) {
-        const nxt = (rawLines[j] || "").trim();
-        if (!nxt) continue;
-        if (isNoiseForSpecialty(nxt)) continue;
-        if (/johns hopkins/i.test(nxt)) continue;
-
-        // Skip lines that clearly repeat the name
-        if (name && nxt.toLowerCase().includes(name.toLowerCase())) continue;
-
-        if (nxt.includes(":")) break;
-        if (nxt.length > 200) continue;
-        specialty = nxt;
-        break;
-      }
+      specialty = findSpecialtyNear(rawLines, i + 1, name);
 
       break;
     }
