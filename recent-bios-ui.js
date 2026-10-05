@@ -17,6 +17,8 @@
   let cachedPhoto = "";
   let photoSource = "";
   let displayedIdentity = "";
+  let pressedAction = null;
+  let renderDeferred = false;
 
   // Keep useful editing markup, never event handlers or executable HTML from storage/paste.
   function safeHtml(html) {
@@ -38,7 +40,14 @@
     return container.innerHTML;
   }
 
+  function updateRecentListHeight() {
+    const firstFour = Array.from(list.children).slice(0, 4);
+    list.style.maxHeight = firstFour.reduce((height, row) => height + row.getBoundingClientRect().height, 0) + "px";
+  }
+
   function render() {
+    // Autosave can finish between pointerdown and click. Keep that button alive.
+    if (pressedAction) { renderDeferred = true; return; }
     const focused = document.activeElement;
     const focusId = focused?.dataset.bioId;
     const focusAction = focused?.dataset.action;
@@ -71,6 +80,7 @@
       row.append(details, actions);
       list.appendChild(row);
     });
+    updateRecentListHeight();
     empty.hidden = items.length > 0;
     clearRecent.disabled = items.length === 0;
     undo.hidden = removed.length === 0;
@@ -80,6 +90,28 @@
         buttons[0] || undo).focus();
     }
   }
+
+  list.addEventListener("pointerdown", event => {
+    const button = event.target.closest("button");
+    if (button && list.contains(button)) pressedAction = { pointerId: event.pointerId };
+  });
+  function releaseAction(event) {
+    const pressed = pressedAction;
+    if (!pressed || ((event.type === "pointerup" || event.type === "pointercancel") && event.pointerId !== pressed.pointerId)) return;
+    // The compatibility click follows pointerup; redraw on the next frame.
+    requestAnimationFrame(() => {
+      if (pressedAction !== pressed) return;
+      pressedAction = null;
+      if (renderDeferred) { renderDeferred = false; render(); }
+    });
+  }
+  document.addEventListener("pointerup", releaseAction);
+  document.addEventListener("pointercancel", releaseAction);
+  window.addEventListener("blur", releaseAction);
+  list.addEventListener("click", releaseAction);
+  list.addEventListener("focusout", event => {
+    if (!list.contains(event.relatedTarget)) releaseAction(event);
+  });
 
   function enqueue(operation, message) {
     queue = queue.then(async () => {
@@ -116,7 +148,7 @@
     if (photoSource && clean(photoSource) !== clean(active.source)) {
       return items.find(item => item.id === active.id)?.photoSrc || "";
     }
-    const source = photoImg.style.display === "none" ? "" : (photoImg.getAttribute("src") || "");
+    const source = photoImg.dataset.placeholder === "true" || photoImg.style.display === "none" ? "" : (photoImg.getAttribute("src") || "");
     if (!source) return "";
     if (source === cachedPhotoSource) return cachedPhoto;
     // Keep the full original in the current PDF preview. Bound only the saved copy
@@ -137,6 +169,14 @@
     return saved;
   }
 
+  function sameSnapshot(previous, snapshot) {
+    return previous.identity === snapshot.identity && previous.source === snapshot.source && previous.name === snapshot.name &&
+      previous.photoSrc === snapshot.photoSrc && previous.fontSize === snapshot.fontSize && previous.editable === snapshot.editable &&
+      RecentBios.FIELD_IDS.every(id => previous.fields[id] === snapshot.fields[id]) &&
+      RecentBios.SECTION_KEYS.every(key => previous.sections[key].hidden === snapshot.sections[key].hidden &&
+        previous.sections[key].checked === snapshot.sections[key].checked);
+  }
+
   function saveActive() {
     clearTimeout(saveTimer);
     if (restoring) return queue;
@@ -144,6 +184,8 @@
     try { snapshot = capture(); }
     catch (_) { status.textContent = "This bio could not be saved. Your current preview and PDF still work."; return queue; }
     if (!snapshot) return queue;
+    const previous = items.find(item => item.id === snapshot.id);
+    if (previous && sameSnapshot(previous, snapshot)) return queue;
     return enqueue(() => history.save(snapshot));
   }
 
@@ -172,11 +214,7 @@
     photoFileInput.value = "";
     photoSource = item.source;
     if (item.photoSrc) setPhotoSrc(item.photoSrc);
-    else {
-      [photoImg, photoPreviewImg].forEach(img => { img.removeAttribute("src"); img.style.display = "none"; });
-      photoPlaceholder.style.display = "grid";
-      photoPreviewText.style.display = "block";
-    }
+    else showPhotoPlaceholder();
     fontSizeSlider.value = item.fontSize;
     fontSizeSlider.dispatchEvent(new Event("input"));
     editToggle.checked = item.editable;
@@ -225,10 +263,7 @@
     if (!source || /^Physician Name(?:, Credentials)?$/.test(name)) return;
     const identity = normalizeSpaces(name).toLowerCase();
     if (displayedIdentity && displayedIdentity !== identity && photoSource && clean(photoSource) !== clean(source)) {
-      [photoImg, photoPreviewImg].forEach(img => { img.removeAttribute("src"); img.style.display = "none"; });
-      photoPlaceholder.style.display = "grid";
-      photoPreviewText.style.display = "block";
-      photoFileInput.value = "";
+      showPhotoPlaceholder();
       cachedPhotoSource = cachedPhoto = photoSource = "";
     }
     displayedIdentity = identity;
@@ -243,7 +278,11 @@
     saveActive(); active = null; displayedIdentity = ""; photoSource = "";
   }, true);
   pageInner.addEventListener("input", scheduleSave);
-  pageInner.addEventListener("focusout", saveActive);
+  pageInner.addEventListener("focusout", event => {
+    // Keyboard navigation and accessibility clicks may focus before pointerdown.
+    if (list.contains(event.relatedTarget) && !pressedAction) pressedAction = { pointerId: null };
+    saveActive();
+  });
   pageInner.addEventListener("change", scheduleSave);
   fontSizeSlider.addEventListener("input", scheduleSave);
   // Ignore the temporary synthetic editing toggles used by PDF/Print.
@@ -256,6 +295,7 @@
   downloadBtn.addEventListener("click", saveActive, true);
   printBtn.addEventListener("click", saveActive, true);
   window.addEventListener("pagehide", saveActive);
+  window.addEventListener("resize", updateRecentListHeight);
   document.addEventListener("visibilitychange", () => { if (document.hidden) saveActive(); });
   enqueue(() => history.list());
 })();

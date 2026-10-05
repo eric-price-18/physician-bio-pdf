@@ -1114,9 +1114,25 @@ const photoPreview = document.getElementById("photoPreview");
 const photoPreviewImg = document.getElementById("photoPreviewImg");
 const photoPreviewText = document.getElementById("photoPreviewText");
 
+function showPhotoPlaceholder() {
+  photoImg.src = "placeholder.svg";
+  photoImg.alt = "Photo placeholder";
+  photoImg.dataset.placeholder = "true";
+  photoImg.style.display = "block";
+  photoPlaceholder.style.display = "none";
+  photoFileInput.value = "";
+  photoPreviewImg.removeAttribute("src");
+  photoPreviewImg.style.display = "none";
+  photoPreviewText.style.display = "block";
+  document.dispatchEvent(new Event("bio-photo-change"));
+}
+
 // Show image in both preview and floated photo box
 function setPhotoSrc(src) {
+  if (!src) { showPhotoPlaceholder(); return; }
   photoImg.src = src;
+  photoImg.alt = "Physician Photo";
+  photoImg.dataset.placeholder = "false";
   photoImg.style.display = "block";
   photoPlaceholder.style.display = "none";
 
@@ -1273,12 +1289,7 @@ document.getElementById("clearBtn").addEventListener("click", () => {
   });
 
   // Reset photos
-  photoImg.src = "";
-  photoImg.style.display = "none";
-  photoPlaceholder.style.display = "grid";
-  photoPreviewImg.src = "";
-  photoPreviewImg.style.display = "none";
-  photoPreviewText.style.display = "block";
+  showPhotoPlaceholder();
 
    // Scroll back to the top
    window.scrollTo({
