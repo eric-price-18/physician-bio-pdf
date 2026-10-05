@@ -221,7 +221,6 @@
     editToggle.dispatchEvent(new Event("change"));
     restoring = false;
     ensureBackgroundClears();
-    status.textContent = "Opened " + item.name + ".";
     document.getElementById("nameField").setAttribute("tabindex", "-1");
     document.getElementById("nameField").focus({ preventScroll: true });
     document.querySelector(".preview-controls").scrollIntoView({ behavior: "smooth", block: "start" });
