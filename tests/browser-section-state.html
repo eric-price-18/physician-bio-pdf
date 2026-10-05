@@ -1,0 +1,80 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Section state regression tests</title>
+<h1>Section state regression tests</h1>
+<p>Run on an isolated local test origin. This resets test history on that origin.</p>
+<button id="run">Run section checks</button><pre id="result" role="status">Ready</pre>
+<script src="../recent-bios.js"></script><script>
+document.getElementById('run').onclick = async () => {
+  const output=document.getElementById('result'), lines=[];
+  function assert(condition,message) { if(!condition) throw new Error(message); lines.push('PASS: '+message); }
+  const store=RecentBios.createStore(window);
+  const frame=document.createElement('iframe'); frame.title='Isolated section fixture'; frame.style.width='100%'; frame.style.height='700px';
+  let app, doc;
+  const get=id=>doc.getElementById(id);
+  const section=key=>doc.querySelector('[data-field="'+key+'"]');
+  const toggle=key=>section(key).querySelector('.section-toggle');
+  const consistent=()=>[...doc.querySelectorAll('.field')].every(field=>field.querySelector('.section-toggle').checked===!field.classList.contains('hidden'));
+  const source=(name,memberships)=>name+', MD\nCardiology\nJohns Hopkins Affiliations:\nTest Faculty\nLanguages\nEnglish\nGender\nFemale\nProfessional Titles\nTest Director\nPrimary Academic Title\nTest Professor\nBackground\nFictional section regression biography.\nEducation\nMedical Education: Test University, MD, 2000\nBoard Certifications\nCardiology: Test Board, 2005\n'+(memberships?'Memberships\nTest Society\n':'')+'Locations\nTest Hospital\n100 Test Road, Baltimore, MD 21224\nPhone: 410-555-0100';
+  async function until(check) {
+    const start=Date.now();
+    while(!await check()) { if(Date.now()-start>5000) throw new Error('Section check timed out'); await new Promise(resolve=>setTimeout(resolve,30)); }
+  }
+  async function load() {
+    const loaded=new Promise(resolve=>frame.onload=resolve);
+    if(!frame.isConnected) { frame.src='../index.html'; document.body.appendChild(frame); }
+    else frame.contentWindow.location.reload();
+    await loaded; app=frame.contentWindow; doc=frame.contentDocument;
+    await until(()=>get('photoImg').complete);
+  }
+  function parse(text) { get('rawInput').value=text; get('parseBtn').click(); }
+  function change(key,checked) { toggle(key).checked=checked; toggle(key).dispatchEvent(new app.Event('change',{bubbles:true})); }
+  async function open(name) {
+    await until(()=>doc.querySelector('button[aria-label="Open '+name+', MD"]'));
+    doc.querySelector('button[aria-label="Open '+name+', MD"]').click();
+    await until(()=>get('nameField').textContent===name+', MD');
+  }
+  try {
+    await store.clear(); await load();
+    parse(source('Alice Adams',false));
+    await until(async()=> (await store.list()).items.some(item=>item.name==='Alice Adams, MD'));
+    const firstCount=[...doc.querySelectorAll('.field')].filter(field=>!field.classList.contains('hidden')).length;
+    assert(!section('locations').classList.contains('hidden'),'The first fixture has a populated last section');
+    change('locations',false);
+    await until(async()=> (await store.list()).items.find(item=>item.name==='Alice Adams, MD')?.sections.locations.hidden);
+    const first=(await store.list()).items.find(item=>item.name==='Alice Adams, MD');
+    const firstSnapshot=JSON.stringify(first);
+    await load(); await open('Alice Adams');
+    assert(section('locations').classList.contains('hidden') && !toggle('locations').checked,'Refresh and Open preserve the first bio\'s hidden last section');
+    parse(source('Bob Baker',true));
+    await until(async()=> (await store.list()).items.some(item=>item.name==='Bob Baker, MD'));
+    assert(!section('locations').classList.contains('hidden') && toggle('locations').checked,'The next bio shows its populated last section with its checkbox checked');
+    assert(consistent(),'Every section checkbox matches visibility after switching to a new bio');
+    assert([...doc.querySelectorAll('.field')].filter(field=>!field.classList.contains('hidden')).length>firstCount,'A bio with more populated sections resets newly available controls');
+    assert(JSON.stringify((await store.list()).items.find(item=>item.id===first.id))===firstSnapshot,'Creating the second bio does not overwrite the first bio or its timestamp');
+    change('education',false);
+    await until(async()=> (await store.list()).items.find(item=>item.name==='Bob Baker, MD')?.sections.education.hidden);
+    await load(); await open('Bob Baker');
+    assert(section('education').classList.contains('hidden') && !toggle('education').checked && consistent(),'Restoring the second bio preserves its own section choices');
+    change('gender',false);
+    await until(async()=> (await store.list()).items.find(item=>item.name==='Bob Baker, MD')?.sections.gender.hidden);
+    assert(consistent() && getComputedStyle(section('gender')).display==='none','A toggle after restoration updates visibility and the saved choice');
+    await open('Alice Adams');
+    assert(section('locations').classList.contains('hidden') && !section('education').classList.contains('hidden') && consistent(),'Switching back keeps section choices separate between bios');
+    change('background',false);
+    await until(async()=> (await store.list()).items.find(item=>item.name==='Alice Adams, MD')?.sections.background.hidden);
+    parse('Cara Clark, MD\nNeurology\nBackground\nFictional minimal biography.');
+    await until(async()=> (await store.list()).items.some(item=>item.name==='Cara Clark, MD'));
+    assert(!section('background').classList.contains('hidden') && toggle('background').checked && consistent(),'A new minimal bio resets Background and auto-hidden empty controls');
+    const second=(await store.list()).items.find(item=>item.name==='Bob Baker, MD');
+    const legacy={...second,sections:{...second.sections,locations:{hidden:false,checked:false},education:{hidden:true,checked:true}}};
+    const db=await new Promise((resolve,reject)=>{const request=indexedDB.open(RecentBios.DB_NAME,1); request.onsuccess=()=>resolve(request.result); request.onerror=()=>reject(request.error);});
+    await new Promise((resolve,reject)=>{const tx=db.transaction('bios','readwrite'); tx.objectStore('bios').put(legacy); tx.oncomplete=resolve; tx.onabort=()=>reject(tx.error);}); db.close();
+    await load(); await open('Bob Baker');
+    assert(consistent() && toggle('locations').checked && !toggle('education').checked,'Legacy mismatched controls are repaired from saved section visibility');
+    await new Promise(resolve=>setTimeout(resolve,550));
+    assert((await store.list()).items.find(item=>item.id===second.id).updatedAt===second.updatedAt,'Repairing legacy control flags on Open preserves the edit timestamp');
+    get('clearBtn').click();
+    assert(!section('background').classList.contains('hidden') && toggle('background').checked && consistent(),'Clear resets all controls consistently');
+    frame.remove(); output.textContent=lines.join('\n')+'\nALL SECTION CHECKS PASSED';
+  } catch(error) { output.textContent=lines.join('\n')+'\nFAIL: '+error.message; }
+};
+</script></html>

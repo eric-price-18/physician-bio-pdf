@@ -27,19 +27,19 @@ document.getElementById('run').onclick = async () => {
     assert(loaded.photoSrc === item.photoSrc && loaded.fontSize === 16 && loaded.sections.gender.hidden, 'IndexedDB photo, settings and edited fields survive a new store connection');
     await store.save({...item, updatedAt:2000, fields:{...item.fields,backgroundField:'Latest edited background'}});
     assert((await store.list()).items.length===1 && (await store.list()).items[0].fields.backgroundField==='Latest edited background', 'Latest edits update one record');
-    for(let i=0;i<14;i++) await store.save(bio('test-'+i,3000+i));
-    assert((await store.list()).items.length===12 && (await store.list()).items[0].id==='test-13', '12 recent bios, newest first');
+    for(let i=0;i<22;i++) await store.save(bio('test-'+i,3000+i));
+    assert((await store.list()).items.length===20 && (await store.list()).items[0].id==='test-21', '20 recent bios, newest first');
     const db = await new Promise((resolve,reject)=>{const req=indexedDB.open(RecentBios.DB_NAME,1);req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);});
     await new Promise((resolve,reject)=>{const tx=db.transaction('bios','readwrite');tx.objectStore('bios').put({id:'corrupt'});tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);});
     const result = await store.list();
-    assert(result.items.length===12 && result.warning.includes('skipped'),'Corrupt IndexedDB record is safely skipped');
-    await store.remove('test-13');
-    assert((await store.list()).items.length===11,'Delete persists');
+    assert(result.items.length===20 && result.warning.includes('skipped'),'Corrupt IndexedDB record is safely skipped');
+    await store.remove('test-21');
+    assert((await store.list()).items.length===19,'Delete persists');
     const previous=(await store.list()).items;
     await store.clear();
     assert((await RecentBios.createStore(window).list()).items.length===0,'Clear persists');
     await store.restore(previous);
-    assert((await store.list()).items.length===11,'Undo restores removed bios');
+    assert((await store.list()).items.length===19,'Undo restores removed bios');
     const fallbackStore = RecentBios.createStore({localStorage:window.localStorage});
     await fallbackStore.save(bio('offline-save',4500));
     assert((await RecentBios.createStore(window).list()).items.some(item=>item.id==='offline-save'),'Real localStorage fallback merges into IndexedDB on reconnect');
@@ -166,7 +166,7 @@ document.getElementById('run').onclick = async () => {
     get('clearBtn').click();
     assert(get('photoImg').dataset.placeholder==='true','Clear restores the default silhouette');
     assert(true,'App delete, undo and clear persist');
-    for(let i=0;i<12;i++) await store.save(bio('scroll-'+i,Date.now()+i));
+    for(let i=0;i<20;i++) await store.save(bio('scroll-'+i,Date.now()+i));
     const allScroll=(await store.list()).items;
     async function reloadFixture() {
       const loaded=new Promise(resolve=>frame.onload=resolve);
@@ -179,10 +179,10 @@ document.getElementById('run').onclick = async () => {
     let scrollList=scrollDoc.getElementById('recentBiosList');
     const fourHeight=list=>[...list.children].slice(0,4).reduce((height,row)=>height+row.getBoundingClientRect().height,0);
     assert(Math.abs(scrollList.clientHeight-fourHeight(scrollList))<2 && scrollList.scrollHeight>scrollList.clientHeight,'A populated desktop list shows four items and scrolls internally');
-    const twelvePageHeight=scrollDoc.body.scrollHeight;
+    const twentyPageHeight=scrollDoc.body.scrollHeight;
     await store.clear(); await store.restore(allScroll.slice(0,4));
     scrollDoc=await reloadFixture();
-    assert(Math.abs(scrollDoc.body.scrollHeight-twelvePageHeight)<2,'Adding items beyond four does not increase the page height');
+    assert(Math.abs(scrollDoc.body.scrollHeight-twentyPageHeight)<2,'Adding items up to twenty does not increase the page height beyond four');
     await store.clear(); await store.restore(allScroll);
     scrollDoc=await reloadFixture(); frame.style.width='360px';
     await new Promise(resolve=>frame.contentWindow.requestAnimationFrame(()=>frame.contentWindow.requestAnimationFrame(resolve)));

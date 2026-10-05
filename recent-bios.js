@@ -1,7 +1,7 @@
 /* Local-only storage. Photos use IndexedDB rather than localStorage's small quota. */
 (function (root) {
   "use strict";
-  const MAX_ITEMS = 12;
+  const MAX_ITEMS = 20;
   const DB_NAME = "physician-bio-pdf-history";
   const KEY = "physician-bio-pdf:recent:v1";
   const FIELD_IDS = ["nameField", "credentialsField", "specialtyField", "affiliationsField",
@@ -29,7 +29,13 @@
   function normalize(items) {
     if (!Array.isArray(items)) throw new Error("Invalid history");
     const seen = new Set();
-    return items.filter(validItem).sort((a, b) => b.updatedAt - a.updatedAt).filter(item => {
+    // Older parses could save a checkbox that disagreed with the rendered section.
+    // Preserve the saved visibility and edit timestamp while repairing the control.
+    return items.filter(validItem).map(item => ({ ...item,
+      sections: Object.fromEntries(SECTION_KEYS.map(key => [key, {
+        hidden: item.sections[key].hidden, checked: !item.sections[key].hidden
+      }]))
+    })).sort((a, b) => b.updatedAt - a.updatedAt).filter(item => {
       if (seen.has(item.id) || seen.has("identity:" + item.identity)) return false;
       seen.add(item.id);
       seen.add("identity:" + item.identity);

@@ -208,8 +208,7 @@
     document.getElementById("credentialsField").style.display = "none";
     document.querySelectorAll(".field").forEach(field => {
       const section = item.sections[field.dataset.field];
-      field.classList.toggle("hidden", section.hidden);
-      field.querySelector(".section-toggle").checked = section.checked;
+      setSectionVisible(field, !section.hidden);
     });
     photoFileInput.value = "";
     photoSource = item.source;

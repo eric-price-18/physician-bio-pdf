@@ -908,8 +908,8 @@ function populatePreview(data) {
       const key = field.dataset.field;
       if (!key) return;
   
-      // Never auto-hide Background
-      if (key === "background") return;
+      // Each new parse resets Background, including a prior bio's manual hiding.
+      if (key === "background") { setSectionVisible(field, true); return; }
   
       // Only auto-hide the specific sections listed above
       if (!autoHideKeys.has(key)) return;
@@ -936,11 +936,7 @@ function populatePreview(data) {
         }
       }
   
-      if (isEmpty) {
-        field.classList.add("hidden");
-      } else {
-        field.classList.remove("hidden");
-      }
+      setSectionVisible(field, !isEmpty);
     });
   })();
 
@@ -1230,14 +1226,15 @@ editToggle.addEventListener("change", (e) => {
 });
 
 // Show/hide entire sections with little checkboxes
+function setSectionVisible(field, visible) {
+  field.classList.toggle("hidden", !visible);
+  field.querySelector(".section-toggle").checked = visible;
+}
+
 document.querySelectorAll(".section-toggle").forEach((checkbox) => {
   checkbox.addEventListener("change", (e) => {
     const field = e.target.closest(".field");
-    if (!e.target.checked) {
-      field.classList.add("hidden");
-    } else {
-      field.classList.remove("hidden");
-    }
+    setSectionVisible(field, e.target.checked);
     setTimeout(ensureBackgroundClears, 10);
   });
 });
