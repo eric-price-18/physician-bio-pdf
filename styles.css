@@ -140,6 +140,26 @@ textarea:focus {
   line-height: 1.4;
 }
 
+/* Browser-local history sits below the text input. */
+.input-panel { min-width: 0; }
+.recent-bios { margin-top: 18px; border-top: 1px solid #ddd; padding-top: 12px; }
+.recent-bios-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.recent-bios h2 { margin: 0; font-size: 16px; color: var(--accent-color); }
+.recent-bios-list { list-style: none; padding: 0; margin: 10px 0 0; max-height: 310px; overflow-y: auto; }
+.recent-bio { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid #e5e5e5; }
+.recent-bio-details { flex: 1 1 180px; min-width: 0; overflow-wrap: anywhere; }
+.recent-bio-name { display: block; font-size: 13px; }
+.recent-bio-date { display: block; font-size: 12px; color: #555; margin-top: 3px; }
+.recent-bio-actions { display: flex; gap: 6px; }
+.recent-bios button { min-height: 36px; }
+button:disabled { cursor: default; opacity: 0.5; box-shadow: none; }
+button:focus-visible { outline: 3px solid #438bc2; outline-offset: 2px; }
+[hidden] { display: none !important; }
+@media (max-width: 480px) {
+  .recent-bio-actions { width: 100%; }
+  .recent-bio-actions button { flex: 1; min-height: 44px; }
+}
+
 .photo-upload {
   background: #fbfbfb;
   border-style: dashed;

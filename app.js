@@ -1123,6 +1123,7 @@ function setPhotoSrc(src) {
   photoPreviewImg.src = src;
   photoPreviewImg.style.display = "block";
   photoPreviewText.style.display = "none";
+  document.dispatchEvent(new Event("bio-photo-change"));
 }
 
 photoFileInput.addEventListener("change", (e) => {

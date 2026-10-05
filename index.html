@@ -44,6 +44,17 @@
           Paste (CTRL+V) it into the above input box. Then Right-click &gt; Copy the physician photo,
           left-click on the gray box to the right and paste (CTRL+V) the image.
         </div>
+        <section class="recent-bios" aria-labelledby="recentBiosHeading">
+          <div class="recent-bios-header">
+            <h2 id="recentBiosHeading">Recent bios</h2>
+            <button id="clearRecentBtn" class="ghost" disabled>Clear all</button>
+          </div>
+          <p class="hint">Saved on this browser only. Up to 12 bios, including edits and photos. Nothing is uploaded.</p>
+          <p id="recentBiosEmpty" class="hint">No recent bios yet. Parse a bio to save it here.</p>
+          <ul id="recentBiosList" class="recent-bios-list"></ul>
+          <p id="recentBiosStatus" class="hint" role="status" aria-live="polite"></p>
+          <button id="undoRecentBtn" class="ghost" hidden>Undo removal</button>
+        </section>
       </div>
 
       <div class="photo-upload">
@@ -211,6 +222,8 @@
     crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
   <!-- App logic -->
+  <script src="recent-bios.js"></script>
   <script src="app.js"></script>
+  <script src="recent-bios-ui.js"></script>
 </body>
 </html>

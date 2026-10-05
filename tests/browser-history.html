@@ -1,0 +1,119 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Browser history regression tests</title>
+<h1>Browser history regression tests</h1>
+<p>Run on an isolated local test origin. This resets test history on that origin.</p>
+<button id="run">Run storage checks</button><pre id="result" role="status">Ready</pre>
+<script src="../recent-bios.js"></script><script>
+document.getElementById('run').onclick = async () => {
+  const output = document.getElementById('result');
+  const lines = [];
+  function assert(condition, message) { if (!condition) throw new Error(message); lines.push('PASS: ' + message); }
+  function bio(id, time) {
+    return {version:1, id, identity:id, name:'Test Physician '+id, source:'Fictional test source',
+      createdAt:time, updatedAt:time, fontSize:16, editable:true, photoSrc:'',
+      fields:Object.fromEntries(RecentBios.FIELD_IDS.map(id => [id,'Edited '+id])),
+      sections:Object.fromEntries(RecentBios.SECTION_KEYS.map(key => [key,{hidden:key==='gender',checked:key!=='gender'}]))};
+  }
+  try {
+    const store = RecentBios.createStore(window);
+    await store.clear();
+    const canvas = document.createElement('canvas'); canvas.width=1200; canvas.height=1600;
+    const context = canvas.getContext('2d');
+    const noise = context.createImageData(1200,1600);
+    for(let i=0;i<noise.data.length;i+=4) { noise.data[i]=(i*13)%251; noise.data[i+1]=(i*23)%247; noise.data[i+2]=(i*17)%241; noise.data[i+3]=255; }
+    context.putImageData(noise,0,0);
+    const item = {...bio('photo',1000), photoSrc:canvas.toDataURL()};
+    await store.save(item);
+    const loaded = (await RecentBios.createStore(window).list()).items[0];
+    assert(loaded.photoSrc === item.photoSrc && loaded.fontSize === 16 && loaded.sections.gender.hidden, 'IndexedDB photo, settings and edited fields survive a new store connection');
+    await store.save({...item, updatedAt:2000, fields:{...item.fields,backgroundField:'Latest edited background'}});
+    assert((await store.list()).items.length===1 && (await store.list()).items[0].fields.backgroundField==='Latest edited background', 'Latest edits update one record');
+    for(let i=0;i<14;i++) await store.save(bio('test-'+i,3000+i));
+    assert((await store.list()).items.length===12 && (await store.list()).items[0].id==='test-13', '12 recent bios, newest first');
+    const db = await new Promise((resolve,reject)=>{const req=indexedDB.open(RecentBios.DB_NAME,1);req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);});
+    await new Promise((resolve,reject)=>{const tx=db.transaction('bios','readwrite');tx.objectStore('bios').put({id:'corrupt'});tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);});
+    const result = await store.list();
+    assert(result.items.length===12 && result.warning.includes('skipped'),'Corrupt IndexedDB record is safely skipped');
+    await store.remove('test-13');
+    assert((await store.list()).items.length===11,'Delete persists');
+    const previous=(await store.list()).items;
+    await store.clear();
+    assert((await RecentBios.createStore(window).list()).items.length===0,'Clear persists');
+    await store.restore(previous);
+    assert((await store.list()).items.length===11,'Undo restores removed bios');
+    const fallbackStore = RecentBios.createStore({localStorage:window.localStorage});
+    await fallbackStore.save(bio('offline-save',4500));
+    assert((await RecentBios.createStore(window).list()).items.some(item=>item.id==='offline-save'),'Real localStorage fallback merges into IndexedDB on reconnect');
+    await fallbackStore.remove('offline-save');
+    assert(!(await RecentBios.createStore(window).list()).items.some(item=>item.id==='offline-save'),'An offline deletion removes the primary copy on reconnect');
+    await store.save({...bio('primary-copy',5000),identity:'same-physician'});
+    await fallbackStore.save({...bio('fallback-copy',6000),identity:'same-physician'});
+    await fallbackStore.remove('fallback-copy');
+    assert(!(await RecentBios.createStore(window).list()).items.some(item=>item.identity==='same-physician'),'Deleting an offline duplicate also removes its older primary record');
+    await fallbackStore.clear();
+    assert((await RecentBios.createStore(window).list()).items.length===0,'Offline Clear removes both histories on reconnect');
+    await store.clear(); db.close();
+    const frame = document.createElement('iframe');
+    frame.title = 'Isolated app regression fixture';
+    frame.style.width = '100%'; frame.style.height = '700px';
+    const loadedApp = new Promise(resolve => frame.onload = resolve);
+    frame.src = '../index.html'; document.body.appendChild(frame); await loadedApp;
+    const app = frame.contentWindow, doc = frame.contentDocument;
+    const get = id => doc.getElementById(id);
+    async function until(check) {
+      const start = Date.now();
+      while (!await check()) {
+        if (Date.now()-start > 5000) throw new Error('App check timed out');
+        await new Promise(resolve => setTimeout(resolve, 30));
+      }
+    }
+    const source = (name, specialty) => name+', MD\n'+specialty+'\nBackground\nFictional test background.';
+    function parse(text) { get('rawInput').value = text; get('parseBtn').click(); }
+    function edit(id, value, event) {
+      get(id).value = value; get(id).dispatchEvent(new app.Event(event, {bubbles:true}));
+    }
+    function button(label) { return [...doc.querySelectorAll('button')].find(button => button.getAttribute('aria-label')===label); }
+    function photo(color) {
+      const canvas = doc.createElement('canvas'); canvas.width=20; canvas.height=30;
+      const context=canvas.getContext('2d'); context.fillStyle=color; context.fillRect(0,0,20,30);
+      return canvas.toDataURL();
+    }
+    const firstPhoto=photo('red'), secondPhoto=photo('blue');
+    parse(source('Alice Adams','Cardiology')); app.setPhotoSrc(firstPhoto);
+    get('backgroundField').innerHTML='<strong>Edited background</strong>';
+    get('backgroundField').dispatchEvent(new app.Event('input',{bubbles:true}));
+    const gender=doc.querySelector('[data-field="gender"] .section-toggle');
+    gender.checked=false; gender.dispatchEvent(new app.Event('change',{bubbles:true}));
+    edit('fontSizeSlider','16','input');
+    await until(async()=> (await store.list()).items.some(item=>item.name.startsWith('Alice') && item.photoSrc===firstPhoto && item.fields.backgroundField.includes('Edited background')));
+    parse(source('Bob Baker','Neurology'));
+    await until(async()=> (await store.list()).items.some(item=>item.name.startsWith('Bob')));
+    let bios=(await store.list()).items;
+    assert(bios.find(item=>item.name.startsWith('Bob')).photoSrc==='' && get('photoImg').style.display==='none', 'A new physician never inherits the previous physician photo');
+    button('Open Alice Adams, MD').click();
+    await until(()=>get('nameField').textContent.startsWith('Alice'));
+    assert(get('backgroundField').innerHTML==='<strong>Edited background</strong>' && get('fontSizeSlider').value==='16' && gender.checked===false && get('photoImg').getAttribute('src')===firstPhoto, 'Open restores edited markup, font, section visibility and photo');
+    get('rawInput').value=source('Cara Clark','Dermatology'); app.setPhotoSrc(secondPhoto);
+    await until(async()=> (await store.list()).items.find(item=>item.name.startsWith('Alice'))?.photoSrc===firstPhoto);
+    get('parseBtn').click();
+    await until(async()=> (await store.list()).items.find(item=>item.name.startsWith('Cara'))?.photoSrc===secondPhoto);
+    assert((await store.list()).items.find(item=>item.name.startsWith('Alice')).photoSrc===firstPhoto, 'A photo supplied before Parse stays with the new physician and preserves the old bio');
+    get('parseBtn').click();
+    await until(async()=> (await store.list()).items.find(item=>item.name.startsWith('Cara'))?.photoSrc===secondPhoto);
+    assert(get('photoImg').getAttribute('src')===secondPhoto, 'Reparsing the same physician retains their photo');
+    button('Delete Alice Adams, MD').click();
+    await until(async()=> !(await store.list()).items.some(item=>item.name.startsWith('Alice')));
+    get('undoRecentBtn').click();
+    await until(async()=> (await store.list()).items.some(item=>item.name.startsWith('Alice')));
+    get('clearRecentBtn').click();
+    await until(async()=> (await store.list()).items.length===0);
+    parse(source('Dana Davis','Pediatrics'));
+    await until(async()=> (await store.list()).items.some(item=>item.name.startsWith('Dana')));
+    assert((await store.list()).items[0].photoSrc==='', 'Clearing history does not allow the displayed old photo to be saved for a new physician');
+    get('clearRecentBtn').click();
+    await until(async()=> (await store.list()).items.length===0);
+    frame.remove();
+    assert(true,'App delete, undo and clear persist');
+    output.textContent=lines.join('\n')+'\nALL STORAGE CHECKS PASSED';
+  } catch(error) { output.textContent=lines.join('\n')+'\nFAIL: '+error.message; }
+};
+</script></html>
