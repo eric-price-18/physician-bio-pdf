@@ -1,0 +1,28 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const {createPresetStore} = require('../recent-bios.js');
+require('../department-bios.js');
+(async () => {
+  const defaults = globalThis.DepartmentBios['front-desk'];
+  const original = JSON.stringify(defaults);
+  const store = createPresetStore(defaults);
+  assert.deepEqual(Object.keys(store), ['list']);
+  const first = await store.list();
+  assert.equal(first.items.length, 5);
+  first.items[0].fields.nameField = 'Changed preview';
+  first.items[0].sections.locations.hidden = false;
+  first.items.splice(1, 1);
+  assert.equal((await store.list()).items.length, 5);
+  assert.equal(JSON.stringify(defaults), original);
+  assert.notEqual((await store.list()).items[0].fields.nameField, 'Changed preview');
+  const ui = fs.readFileSync(require.resolve('../recent-bios-ui.js'), 'utf8');
+  const html = fs.readFileSync(require.resolve('../index.html'), 'utf8');
+  assert.ok(!html.includes('saveDepartmentBtn'));
+  assert.ok(!ui.includes('createDepartmentStore'));
+  assert.ok(!ui.includes('saveDepartment'));
+  assert.ok(ui.includes('restoring || activeCollection !== "recent"'));
+  assert.ok(ui.includes('if (collectionId !== "recent") return;'));
+  assert.ok(ui.includes('collectionId === "recent" ? ["Open", "Delete"] : ["Open"]'));
+  assert.ok(!/fetch\(|XMLHttpRequest|sendBeacon|WebSocket/.test(ui));
+  console.log('Read-only presets: detached snapshots, no mutation API, guarded UI, no server writes passed');
+})();

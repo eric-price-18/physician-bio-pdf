@@ -51,36 +51,21 @@ async function main() {
     await presetPage.waitForFunction(() => document.getElementById('nameField').textContent === 'Synthetic Seed One');
     assert.equal(await presetPage.locator('[data-field="certifications"] .section-toggle').isChecked(), false);
     await presetPage.locator('#backgroundField').fill('Synthetic local catalog edit');
-    for (let attempt = 0; ; attempt++) {
-      const saved = await presetPage.evaluate(async () => (await RecentBios.createDepartmentStore(window, 'front-desk', DepartmentBios['front-desk']).list()).items.find(item => item.id === 'seed-One').fields.backgroundField === 'Synthetic local catalog edit');
-      if (saved) break;
-      assert(attempt < 50, 'Preset edit should be committed before reload');
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
+    await presetPage.getByRole('button', { name: 'Open Synthetic Seed One', exact: true }).click();
+    assert.equal(await presetPage.locator('#backgroundField').innerHTML(), 'Synthetic backgroundField');
+    assert.equal(await presetPage.locator('#saveDepartmentBtn').count(), 0);
+    assert.equal(await presetPage.locator('[data-action="Delete"]').count(), 0);
     await presetPage.reload(); await presetPage.getByRole('tab', { name: 'Cath Lab', exact: true }).click();
     await presetPage.getByRole('button', { name: 'Open Synthetic Seed One', exact: true }).click();
-    try {
-      await presetPage.waitForFunction(() => document.getElementById('backgroundField').textContent === 'Synthetic local catalog edit', null, { timeout: 5000 });
-    } catch (error) {
-      console.error(await presetPage.evaluate(async () => ({ name: document.getElementById('nameField').textContent,
-        background: document.getElementById('backgroundField').innerHTML, status: document.getElementById('recentBiosStatus').textContent,
-        local: { ...localStorage }, dbs: await indexedDB.databases(), origin: location.origin,
-        records: (await RecentBios.createDepartmentStore(window, 'front-desk', DepartmentBios['front-desk']).list()).items.map(item => ({ id: item.id, background: item.fields.backgroundField, updatedAt: item.updatedAt })) })));
-      throw error;
-    }
+    assert.equal(await presetPage.locator('#backgroundField').innerHTML(), 'Synthetic backgroundField');
     assert.equal(await presetPage.locator('#photoImg').getAttribute('src'), seedPhoto);
     await presetPage.getByRole('button', { name: 'Open Synthetic Seed Two', exact: true }).click();
     await presetPage.waitForFunction(() => document.getElementById('nameField').textContent === 'Synthetic Seed Two');
     assert(await presetPage.locator('[data-field="certifications"] .section-toggle').isChecked());
     assert.equal(await presetPage.locator('[data-field="locations"] .section-toggle').isChecked(), false);
-    await presetPage.getByRole('button', { name: 'Delete Synthetic Seed One', exact: true }).click();
-    await presetPage.getByRole('button', { name: 'Open Synthetic Seed One', exact: true }).waitFor({ state: 'detached' });
-    await presetPage.reload(); await presetPage.getByRole('tab', { name: 'Cath Lab', exact: true }).click();
-    await presetPage.getByRole('button', { name: 'Open Synthetic Seed Two', exact: true }).waitFor();
-    assert.equal(await presetPage.getByRole('button', { name: 'Open Synthetic Seed One', exact: true }).count(), 0);
-    await presetPage.evaluate(async () => { await RecentBios.createDepartmentStore(window, 'front-desk', DepartmentBios['front-desk']).clear(); });
+    assert.equal(await presetPage.locator('[data-action="Open"]').count(), 3);
     await presetPage.close();
-    report.push('PASS: bundled presets appear on a fresh origin; real IndexedDB edits, paired photo and individual category choices survive reload; deleted bundled entry stays removed');
+    report.push('PASS: bundled presets appear on a fresh origin; read-only controls; transient edits reset on reopen/reload; paired photo and categories intact');
     console.log(report.at(-1));
     await page.goto(origin + '/index.html');
     const recent = page.getByRole('tab', { name: 'Recent bios', exact: true });
@@ -98,7 +83,8 @@ async function main() {
     await page.locator('.recent-bios').screenshot({ path: path.join(output, 'cath-lab-empty.png') });
     await page.locator('#rawInput').fill('Synthetic Demo, MD\nCardiology\nGender\nFemale\nBackground\nSynthetic test biography.');
     await page.locator('#parseBtn').click();
-    await page.locator('#saveDepartmentBtn').click();
+    assert.equal(await page.locator('#saveDepartmentBtn').count(), 0);
+    await recent.click();
     await page.getByRole('button', { name: 'Open Synthetic Demo, MD', exact: true }).waitFor();
     await page.locator('.recent-bios').screenshot({ path: path.join(output, 'cath-lab-populated.png') });
     await recent.click(); assert(await page.locator('#clearRecentBtn').isEnabled());

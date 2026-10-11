@@ -1,107 +1,18 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><title>Department regression tests</title>
-<h1>Department regression tests</h1>
-<p>Use an isolated test origin. All bios are synthetic. This resets both test collections.</p>
-<button id="run">Run department checks</button><pre id="result" role="status">Ready</pre>
-<script src="../recent-bios.js"></script><script>
+<!doctype html><meta charset="utf-8"><title>Read-only department checks</title>
+<button id="run">Run</button><pre id="result"></pre>
+<script>
 document.getElementById('run').onclick = async () => {
-  const output = document.getElementById('result'), lines = [];
-  const assert = (condition, message) => { if (!condition) throw new Error(message); lines.push('PASS: ' + message); };
-  const history = RecentBios.createStore(window), department = RecentBios.createDepartmentStore(window, 'front-desk');
-  const frame = document.createElement('iframe'); frame.title = 'Synthetic department test fixture'; frame.style.width = '100%'; frame.style.height = '700px';
-  let app, doc;
-  const get = id => doc.getElementById(id);
-  const tab = id => doc.querySelector('[data-collection="' + id + '"]');
-  const clickTab = id => tab(id).click();
-  const button = label => doc.querySelector('button[aria-label="' + label + '"]');
-  const source = name => name + ', MD\nCardiology\nLanguages\nEnglish\nGender\nFemale\nBackground\nSynthetic department test bio.\nEducation\nMedical Education: Test University, MD, 2000';
-  async function until(check) {
-    const start = Date.now();
-    while (!await check()) { if (Date.now() - start > 5000) throw new Error('Department check timed out'); await new Promise(resolve => setTimeout(resolve, 30)); }
-  }
-  async function load() {
-    const loaded = new Promise(resolve => frame.onload = resolve);
-    if (!frame.isConnected) { frame.src = '../index.html'; document.body.appendChild(frame); }
-    else frame.contentWindow.location.reload();
-    await loaded; app = frame.contentWindow; doc = frame.contentDocument;
-    await until(() => get('photoImg').complete && tab('front-desk'));
-  }
-  function parse(name) { get('rawInput').value = source(name); get('parseBtn').click(); }
-  function edit() {
-    get('backgroundField').innerHTML = '<strong>Saved department edit</strong>';
-    get('backgroundField').dispatchEvent(new app.Event('input', { bubbles: true }));
-    const gender = doc.querySelector('[data-field="gender"] .section-toggle');
-    gender.checked = false; gender.dispatchEvent(new app.Event('change', { bubbles: true }));
-    get('fontSizeSlider').value = '17'; get('fontSizeSlider').dispatchEvent(new app.Event('input'));
-  }
-  try {
-    await history.clear(); await department.clear(); await load();
-    assert([...doc.querySelectorAll('[role="tab"]')].map(tab => tab.textContent).join('|') === 'Recent bios|Cath Lab', 'Recent bios is first, then the confirmed Cath Lab department');
-    assert(get('clearRecentBtn').disabled && !get('recentBiosEmpty').hidden, 'Empty Recent disables Clear all');
-    clickTab('front-desk');
-    assert(get('clearRecentBtn').disabled && !get('recentBiosEmpty').hidden && get('saveDepartmentBtn').disabled, 'Empty department has no invented doctors and requires a preview');
-    assert(get('bioCollectionPanel').getAttribute('aria-labelledby') === tab('front-desk').id && tab('front-desk').tabIndex === 0 && tab('recent').tabIndex === -1, 'Active tab labels the panel and has the sole tab stop');
-    parse('Synthetic Alice');
-    await until(async () => (await history.list()).items.length === 1);
-    assert(get('clearRecentBtn').disabled, 'Saving Recent while a department is selected cannot enable Clear all');
-    edit();
-    const canvas = doc.createElement('canvas'); canvas.width = 8; canvas.height = 8;
-    canvas.getContext('2d').fillRect(0, 0, 8, 8); const photo = canvas.toDataURL(); app.setPhotoSrc(photo);
-    await until(() => get('photoImg').complete);
-    get('saveDepartmentBtn').click(); get('saveDepartmentBtn').click();
-    await until(async () => (await department.list()).items.length === 1);
-    let saved = (await department.list()).items[0];
-    assert(saved.sections.gender.hidden && !saved.sections.gender.checked && saved.fields.backgroundField.includes('Saved department edit') && saved.fontSize === 17 && saved.photoSrc === photo, 'Save captures text, photo, font and chosen per-doctor categories; repeated clicks do not duplicate');
-    const recentBefore = JSON.stringify((await history.list()).items);
-    get('clearRecentBtn').dispatchEvent(new app.MouseEvent('click', { bubbles: true }));
-    await new Promise(resolve => setTimeout(resolve, 100));
-    assert((await department.list()).items.length === 1 && JSON.stringify((await history.list()).items) === recentBefore, 'Even a synthetic click on disabled Clear all does nothing from a department');
-    clickTab('recent');
-    assert(!get('clearRecentBtn').disabled, 'Nonempty Recent enables Clear all');
-    get('clearRecentBtn').click(); get('clearRecentBtn').dispatchEvent(new app.MouseEvent('click'));
-    await until(async () => (await history.list()).items.length === 0 && get('clearRecentBtn').disabled);
-    assert((await department.list()).items.length === 1, 'Repeated Recent clear leaves the department untouched');
-    get('undoRecentBtn').click(); get('undoRecentBtn').click();
-    await until(async () => (await history.list()).items.length === 1);
-    assert((await department.list()).items.length === 1, 'Repeated Recent undo restores exactly one bio without touching departments');
-    get('clearRecentBtn').click(); await until(async () => !(await history.list()).items.length);
-    await load(); clickTab('front-desk');
-    await until(() => button('Open Synthetic Alice, MD'));
-    button('Open Synthetic Alice, MD').click();
-    await until(() => get('nameField').textContent === 'Synthetic Alice, MD');
-    assert(get('backgroundField').innerHTML === '<strong>Saved department edit</strong>' && get('photoImg').getAttribute('src') === photo && get('fontSizeSlider').value === '17' && !doc.querySelector('[data-field="gender"] .section-toggle').checked && get('rawInput').value === source('Synthetic Alice'), 'Reload and Open restore department content, original source, photo, font and checkbox choices after clearing Recent');
-    get('backgroundField').innerHTML = 'Department-only update'; get('backgroundField').dispatchEvent(new app.Event('input', { bubbles: true }));
-    clickTab('recent');
-    await until(async () => (await department.list()).items[0].fields.backgroundField === 'Department-only update');
-    assert(!(await history.list()).items.length && get('clearRecentBtn').disabled, 'Autosave follows the opened department bio even when browsing empty Recent');
-    parse('Synthetic Bob');
-    await until(async () => (await history.list()).items.length === 1);
-    clickTab('front-desk'); get('saveDepartmentBtn').click();
-    await until(async () => (await department.list()).items.length === 2);
-    button('Open Synthetic Alice, MD').click(); await until(() => get('nameField').textContent === 'Synthetic Alice, MD');
-    assert(!doc.querySelector('[data-field="gender"] .section-toggle').checked, 'First doctor retains hidden gender');
-    button('Open Synthetic Bob, MD').click(); button('Open Synthetic Bob, MD').click();
-    await until(() => get('nameField').textContent === 'Synthetic Bob, MD');
-    assert(doc.querySelector('[data-field="gender"] .section-toggle').checked && get('backgroundField').textContent.includes('Synthetic department test'), 'Second doctor retains its own categories and content after repeated Open');
-    saved = (await department.list()).items.find(item => item.name === 'Synthetic Alice, MD');
-    for (let i = 0; i < 25; i++) await history.save({ ...saved, id: 'eviction-' + i, identity: 'eviction-' + i, name: 'Synthetic Eviction ' + i, updatedAt: Date.now() + i });
-    for (let i = 0; i < 23; i++) await department.save({ ...saved, id: 'retained-' + i, identity: 'retained-' + i, name: 'Synthetic Retained ' + i, updatedAt: Date.now() + i });
-    await load(); clickTab('front-desk');
-    await until(() => get('recentBiosList').children.length === 25);
-    assert((await history.list()).items.length === 20 && (await department.list()).items.length === 25 && button('Open Synthetic Alice, MD'), 'IndexedDB departments retain more than 20 bios and survive Recent eviction');
-    const localHistory = RecentBios.createStore({ localStorage });
-    const localDepartment = RecentBios.createDepartmentStore({ localStorage }, 'front-desk');
-    await localDepartment.save({ ...saved, fields: { ...saved.fields, backgroundField: 'Offline department update' }, updatedAt: Date.now() + 100 });
-    await localHistory.clear();
-    assert(!(await history.list()).items.length && (await department.list()).items.length === 25 && (await department.list()).items.find(item => item.id === saved.id).fields.backgroundField === 'Offline department update', 'Fallback department migration is independent of offline Recent Clear');
-    await load(); clickTab('front-desk'); await until(() => button('Delete Synthetic Alice, MD'));
-    button('Delete Synthetic Alice, MD').click();
-    await until(async () => (await department.list()).items.length === 24);
-    clickTab('recent'); assert(get('undoRecentBtn').hidden, 'Department removal cannot be undone into Recent');
-    clickTab('front-desk'); get('undoRecentBtn').click();
-    await until(async () => (await department.list()).items.length === 25);
-    assert(!(await history.list()).items.length, 'Department delete and undo stay isolated');
-    await history.clear(); await department.clear(); frame.remove();
-    output.textContent = lines.join('\n') + '\nALL DEPARTMENT CHECKS PASSED';
-  } catch (error) { output.textContent = lines.join('\n') + '\nFAIL: ' + error.message; }
+ const result=document.getElementById('result'); const frame=document.createElement('iframe');
+ try {
+ const loaded=new Promise(resolve=>frame.onload=resolve); frame.src='../index.html';document.body.appendChild(frame);await loaded;
+ const doc=frame.contentDocument;
+ const tab=doc.querySelector('[data-collection="front-desk"]');
+ if(!tab) throw Error('Missing Cath Lab'); tab.click();
+ if(doc.getElementById('saveDepartmentBtn')) throw Error('Preset save control exists');
+ if(doc.querySelector('[data-action="Delete"]')) throw Error('Preset delete control exists');
+ if(!doc.getElementById('clearRecentBtn').disabled) throw Error('Preset clear enabled');
+ if(!doc.getElementById('undoRecentBtn').hidden) throw Error('Preset undo visible');
+ result.textContent='ALL READ-ONLY DEPARTMENT CHECKS PASSED';
+ } catch(error){result.textContent='FAIL: '+error.message;} finally{frame.remove();}
 };
-</script></html>
+</script>

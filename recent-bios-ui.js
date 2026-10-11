@@ -4,7 +4,7 @@
   const history = RecentBios.createStore(window);
   const collections = new Map([["recent", { name: "Recent bios", store: history, items: [], removed: [], loaded: false }],
     ...RecentBios.DEPARTMENTS.map(department => [department.id, {
-      name: department.name, store: RecentBios.createDepartmentStore(window, department.id, window.DepartmentBios?.[department.id] || []), items: [], removed: [], loaded: false
+      name: department.name, store: RecentBios.createPresetStore(window.DepartmentBios?.[department.id] || []), items: [], removed: [], loaded: false
     }])]);
   const list = document.getElementById("recentBiosList");
   const empty = document.getElementById("recentBiosEmpty");
@@ -13,12 +13,9 @@
   const undo = document.getElementById("undoRecentBtn");
   const tabs = document.getElementById("bioTabs");
   const panel = document.getElementById("bioCollectionPanel");
-  const departmentTools = document.getElementById("departmentTools");
-  const saveDepartment = document.getElementById("saveDepartmentBtn");
   let selectedCollection = "recent";
   let activeCollection = "recent";
   let clearPending = false;
-  let departmentSavePending = false;
   let active = null;
   let saveTimer;
   let queue = Promise.resolve();
@@ -46,10 +43,7 @@
   function updateControls() {
     const collection = collections.get(selectedCollection);
     clearRecent.disabled = selectedCollection !== "recent" || !collection.items.length || clearPending;
-    departmentTools.hidden = selectedCollection === "recent";
-    saveDepartment.disabled = !active || !collection.loaded || departmentSavePending;
-    saveDepartment.textContent = "Save preview to " + collection.name;
-    undo.hidden = !collection.removed.length;
+    undo.hidden = selectedCollection !== "recent" || !collection.removed.length;
   }
 
   function selectCollection(id) {
@@ -134,7 +128,7 @@
       details.append(name, date);
       const actions = document.createElement("div");
       actions.className = "recent-bio-actions";
-      ["Open", "Delete"].forEach(action => {
+      (collectionId === "recent" ? ["Open", "Delete"] : ["Open"]).forEach(action => {
         const button = document.createElement("button");
         button.textContent = action;
         button.dataset.bioId = item.id;
@@ -150,7 +144,7 @@
     updateRecentListHeight();
     empty.hidden = collection.items.length > 0;
     empty.textContent = collectionId === "recent" ? "No recent bios yet. Parse a bio to save it here." :
-      "No bios in " + collection.name + " yet. Parse or open a bio, choose its categories, then save the preview here.";
+      "No preset bios in " + collection.name + " yet.";
     if (focusId) {
       const buttons = Array.from(list.querySelectorAll("button"));
       (buttons.find(button => button.dataset.bioId === focusId && button.dataset.action === focusAction) ||
@@ -249,7 +243,8 @@
 
   function saveActive() {
     clearTimeout(saveTimer);
-    if (restoring) return queue;
+    // Preset previews are transient. Never save edits back to their collection.
+    if (restoring || activeCollection !== "recent") return queue;
     let snapshot;
     try { snapshot = capture(); }
     catch (_) { status.textContent = "This bio could not be saved. Your current preview and PDF still work."; return queue; }
@@ -262,7 +257,7 @@
   }
 
   function scheduleSave() {
-    if (!active || restoring) return;
+    if (!active || restoring || activeCollection !== "recent") return;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(saveActive, 450);
   }
@@ -301,6 +296,7 @@
   }
 
   function removeBio(id, collectionId) {
+    if (collectionId !== "recent") return;
     if (active?.id === id && activeCollection === collectionId) {
       clearTimeout(saveTimer);
       active = null;
@@ -333,6 +329,7 @@
     });
   });
   undo.addEventListener("click", () => {
+    if (selectedCollection !== "recent") return;
     const collectionId = selectedCollection;
     enqueue(async () => {
       const collection = collections.get(collectionId);
@@ -341,23 +338,6 @@
       collection.removed = [];
       return result;
     }, "Bios restored.", collectionId);
-  });
-
-  saveDepartment.addEventListener("click", () => {
-    const collectionId = selectedCollection;
-    if (collectionId === "recent" || !active || departmentSavePending || !collections.get(collectionId).loaded) return;
-    let snapshot;
-    try { snapshot = capture(); }
-    catch (_) { status.textContent = "This preview could not be saved."; return; }
-    if (!snapshot) return;
-    saveActive();
-    departmentSavePending = true;
-    updateControls();
-    enqueue(() => collections.get(collectionId).store.save(snapshot),
-      "Preview saved to " + collections.get(collectionId).name + ". Open it here to edit the saved copy.", collectionId).finally(() => {
-      departmentSavePending = false;
-      updateControls();
-    });
   });
 
   // Flush the old preview before a new parse or a clear replaces it.

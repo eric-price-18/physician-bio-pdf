@@ -208,7 +208,14 @@
     };
   }
 
-  const api = { createStore, createDepartmentStore, DEPARTMENTS, validItem, normalize, FIELD_IDS, SECTION_KEYS, MAX_ITEMS, DB_NAME, KEY };
+  // Bundled department presets never read or write browser storage. Existing local
+  // copies remain untouched; each read returns a detached snapshot for preview use.
+  function createPresetStore(defaults = []) {
+    const items = JSON.stringify(normalize(defaults, Infinity));
+    return Object.freeze({ list: async () => ({ items: JSON.parse(items), warning: "" }) });
+  }
+
+  const api = { createPresetStore, createStore, createDepartmentStore, DEPARTMENTS, validItem, normalize, FIELD_IDS, SECTION_KEYS, MAX_ITEMS, DB_NAME, KEY };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.RecentBios = api;
 })(typeof window !== "undefined" ? window : globalThis);
