@@ -44,15 +44,23 @@
           Paste (CTRL+V) it into the above input box. Then Right-click &gt; Copy the physician photo,
           left-click on the gray box to the right and paste (CTRL+V) the image.
         </div>
-        <section class="recent-bios" aria-labelledby="recentBiosHeading">
+        <section class="recent-bios" aria-label="Saved bios">
           <div class="recent-bios-header">
-            <h2 id="recentBiosHeading">Recent bios</h2>
+            <div id="bioTabs" class="bio-tabs" role="tablist" aria-label="Bio collections">
+              <button id="recentBiosHeading" type="button" role="tab" aria-selected="true" aria-controls="bioCollectionPanel" tabindex="0" data-collection="recent">Recent bios</button>
+            </div>
             <button id="clearRecentBtn" class="ghost" disabled>Clear all</button>
           </div>
-          <p id="recentBiosEmpty" class="hint">No recent bios yet. Parse a bio to save it here.</p>
-          <ul id="recentBiosList" class="recent-bios-list"></ul>
+          <div id="bioCollectionPanel" role="tabpanel" aria-labelledby="recentBiosHeading" tabindex="0">
+            <div id="departmentTools" class="department-tools" hidden>
+              <p class="hint">Department bios stay saved in this browser until individually removed.</p>
+              <button id="saveDepartmentBtn" type="button" class="ghost" disabled>Save preview to department</button>
+            </div>
+            <p id="recentBiosEmpty" class="hint">No recent bios yet. Parse a bio to save it here.</p>
+            <ul id="recentBiosList" class="recent-bios-list"></ul>
+            <button id="undoRecentBtn" class="ghost" hidden>Undo removal</button>
+          </div>
           <p id="recentBiosStatus" class="hint" role="status" aria-live="polite"></p>
-          <button id="undoRecentBtn" class="ghost" hidden>Undo removal</button>
         </section>
       </div>
 
@@ -221,6 +229,7 @@
     crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
   <!-- App logic -->
+  <script src="department-bios.js"></script>
   <script src="recent-bios.js"></script>
   <script src="app.js"></script>
   <script src="recent-bios-ui.js"></script>

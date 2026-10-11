@@ -4,6 +4,8 @@
   const MAX_ITEMS = 20;
   const DB_NAME = "physician-bio-pdf-history";
   const KEY = "physician-bio-pdf:recent:v1";
+  // Keep the original storage ID when the owner renames the department.
+  const DEPARTMENTS = [{ id: "front-desk", name: "Cath Lab" }];
   const FIELD_IDS = ["nameField", "credentialsField", "specialtyField", "affiliationsField",
     "languagesField", "genderField", "academicTitleField", "backgroundField", "titlesList",
     "educationList", "certificationsList", "membershipsList", "locationsField"];
@@ -26,7 +28,7 @@
       (!item.photoSrc || /^data:image\/(png|jpeg|jpg|webp|gif|bmp);base64,[a-z\d+/=\s]+$/i.test(item.photoSrc));
   }
 
-  function normalize(items) {
+  function normalize(items, limit = MAX_ITEMS) {
     if (!Array.isArray(items)) throw new Error("Invalid history");
     const seen = new Set();
     // Older parses could save a checkbox that disagreed with the rendered section.
@@ -40,17 +42,60 @@
       seen.add(item.id);
       seen.add("identity:" + item.identity);
       return true;
-    }).slice(0, MAX_ITEMS);
+    }).slice(0, limit);
   }
 
   function createStore(env) {
+    return createCollectionStore(env, DB_NAME, KEY, MAX_ITEMS);
+  }
+
+  function createDepartmentStore(env, id, presets = []) {
+    if (!DEPARTMENTS.some(department => department.id === id)) throw new Error("Unknown department");
+    // A separate database and fallback key prevent history eviction, clear, and
+    // fallback tombstones from ever touching permanent department copies.
+    const store = createCollectionStore(env, "physician-bio-pdf-department-" + id,
+      "physician-bio-pdf:department:" + id + ":v1", Infinity);
+    if (!Array.isArray(presets) || presets.some(item => !validItem(item) || item.departmentRemoved)) throw new Error("Invalid department presets");
+    const defaults = normalize(presets, Infinity);
+    if (defaults.length !== presets.length) throw new Error("Duplicate department presets");
+    function withPresets(result) {
+      // Stored edits and removal markers always win, even if a later catalog
+      // release has newer timestamps. Never overwrite a user's saved choices.
+      const items = normalize([...result.items, ...defaults.filter(preset =>
+        !result.items.some(item => item.id === preset.id || item.identity === preset.identity))], Infinity);
+      return { ...result, items: items.filter(item => !item.departmentRemoved) };
+    }
+    function removalMarker(item) {
+      // Remember removal without keeping the deleted source or photo on disk.
+      return { version: 1, id: item.id, identity: item.identity, name: "Removed bio", source: "",
+        createdAt: item.createdAt, updatedAt: Date.now(), photoSrc: "", fontSize: 14, editable: false,
+        fields: Object.fromEntries(FIELD_IDS.map(key => [key, ""])),
+        sections: Object.fromEntries(SECTION_KEYS.map(key => [key, { hidden: true, checked: false }])),
+        departmentRemoved: true };
+    }
+    const list = async () => withPresets(await store.list());
+    return {
+      list,
+      save: async item => withPresets(await store.save({ ...item, departmentRemoved: false })),
+      remove: async id => {
+        const result = await list();
+        const item = result.items.find(item => item.id === id);
+        return item ? withPresets(await store.save(removalMarker(item))) : result;
+      },
+      clear: async () => withPresets(await store.restore((await list()).items.map(removalMarker))),
+      restore: async items => withPresets(await store.restore(items.map(item => ({ ...item, departmentRemoved: false }))))
+    };
+  }
+
+  function createCollectionStore(env, dbName, key, limit) {
+    const normalizeItems = items => normalize(items, limit);
     let dbPromise;
     let fallback = false;
     let warning = "";
     function database() {
       if (!dbPromise) dbPromise = new Promise((resolve, reject) => {
         if (!env.indexedDB) return reject(new Error("IndexedDB unavailable"));
-        const request = env.indexedDB.open(DB_NAME, 1);
+        const request = env.indexedDB.open(dbName, 1);
         let expired = false;
         const timer = setTimeout(() => { expired = true; reject(new Error("Storage unavailable")); }, 2000);
         request.onupgradeneeded = () => request.result.createObjectStore("bios", { keyPath: "id" });
@@ -67,24 +112,24 @@
     }
 
     function readFallback() {
-      const raw = env.localStorage.getItem(KEY);
+      const raw = env.localStorage.getItem(key);
       if (!raw) return { items: [], deletedIds: [], deletedIdentities: [], clearIndexedDB: false };
       try {
         const data = JSON.parse(raw);
         if (data.version !== 1) throw new Error("Unsupported history");
-        const items = normalize(data.items);
-        if (items.length !== data.items.length) warning = "Some unreadable recent bios were skipped.";
+        const items = normalizeItems(data.items);
+        if (items.length !== data.items.length) warning = "Some unreadable saved bios were skipped.";
         return { items, deletedIds: Array.isArray(data.deletedIds) ? data.deletedIds.filter(id => typeof id === "string") : [],
           deletedIdentities: Array.isArray(data.deletedIdentities) ? data.deletedIdentities.filter(id => typeof id === "string") : [],
           clearIndexedDB: data.clearIndexedDB === true };
       } catch (_) {
-        warning = "Saved history could not be read. Parse a bio to start a new history.";
+        warning = "Saved bios could not be read in this browser.";
         return { items: [], deletedIds: [], deletedIdentities: [], clearIndexedDB: false };
       }
     }
 
     function changeFallback(state, change, deletion) {
-      const items = normalize(change(state.items));
+      const items = normalizeItems(change(state.items));
       const deletedIds = new Set(state.deletedIds);
       const deletedIdentities = new Set(state.deletedIdentities);
       if (deletion?.id) {
@@ -98,7 +143,7 @@
     }
 
     function writeFallback(state) {
-      env.localStorage.setItem(KEY, JSON.stringify({ version: 1, ...state }));
+      env.localStorage.setItem(key, JSON.stringify({ version: 1, ...state }));
     }
 
     async function transact(change, deletion) {
@@ -117,12 +162,12 @@
             let items;
             request.onsuccess = () => {
               try {
-                const primary = normalize(request.result);
-                if (primary.length !== request.result.length) warning = "Some unreadable recent bios were skipped.";
+                const primary = normalizeItems(request.result);
+                if (primary.length !== request.result.length) warning = "Some unreadable saved bios were skipped.";
                 // Reconcile temporary fallback saves and offline deletions on reconnect.
-                items = normalize([...saved.items, ...(saved.clearIndexedDB ? [] :
+                items = normalizeItems([...saved.items, ...(saved.clearIndexedDB ? [] :
                   primary.filter(item => !saved.deletedIds.includes(item.id) && !saved.deletedIdentities.includes(item.identity)))]);
-                if (change) items = normalize(change(items));
+                if (change) items = normalizeItems(change(items));
                 if (deletion && migrate) writeFallback(changeFallback(saved, change, deletion));
                 if (change || migrate) {
                   store.clear();
@@ -133,7 +178,7 @@
             transaction.oncomplete = () => {
               if (migrate) {
                 try { writeFallback({ items: [], deletedIds: [], deletedIdentities: [], clearIndexedDB: false }); }
-                catch (_) { warning = "Recent bios were saved, but temporary browser storage could not be cleaned up."; }
+                catch (_) { warning = "Bios were saved, but temporary browser storage could not be cleaned up."; }
               }
               resolve({ items, warning });
             };
@@ -163,7 +208,7 @@
     };
   }
 
-  const api = { createStore, validItem, normalize, FIELD_IDS, SECTION_KEYS, MAX_ITEMS, DB_NAME, KEY };
+  const api = { createStore, createDepartmentStore, DEPARTMENTS, validItem, normalize, FIELD_IDS, SECTION_KEYS, MAX_ITEMS, DB_NAME, KEY };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.RecentBios = api;
 })(typeof window !== "undefined" ? window : globalThis);

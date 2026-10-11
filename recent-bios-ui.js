@@ -2,14 +2,24 @@
 (function () {
   "use strict";
   const history = RecentBios.createStore(window);
+  const collections = new Map([["recent", { name: "Recent bios", store: history, items: [], removed: [], loaded: false }],
+    ...RecentBios.DEPARTMENTS.map(department => [department.id, {
+      name: department.name, store: RecentBios.createDepartmentStore(window, department.id, window.DepartmentBios?.[department.id] || []), items: [], removed: [], loaded: false
+    }])]);
   const list = document.getElementById("recentBiosList");
   const empty = document.getElementById("recentBiosEmpty");
   const status = document.getElementById("recentBiosStatus");
   const clearRecent = document.getElementById("clearRecentBtn");
   const undo = document.getElementById("undoRecentBtn");
-  let items = [];
+  const tabs = document.getElementById("bioTabs");
+  const panel = document.getElementById("bioCollectionPanel");
+  const departmentTools = document.getElementById("departmentTools");
+  const saveDepartment = document.getElementById("saveDepartmentBtn");
+  let selectedCollection = "recent";
+  let activeCollection = "recent";
+  let clearPending = false;
+  let departmentSavePending = false;
   let active = null;
-  let removed = [];
   let saveTimer;
   let queue = Promise.resolve();
   let restoring = false;
@@ -19,6 +29,60 @@
   let displayedIdentity = "";
   let pressedAction = null;
   let renderDeferred = false;
+
+  RecentBios.DEPARTMENTS.forEach(department => {
+    const tab = document.createElement("button");
+    tab.type = "button";
+    tab.id = "bio-tab-" + department.id;
+    tab.dataset.collection = department.id;
+    tab.textContent = department.name;
+    tab.setAttribute("role", "tab");
+    tab.setAttribute("aria-selected", "false");
+    tab.setAttribute("aria-controls", panel.id);
+    tab.tabIndex = -1;
+    tabs.appendChild(tab);
+  });
+
+  function updateControls() {
+    const collection = collections.get(selectedCollection);
+    clearRecent.disabled = selectedCollection !== "recent" || !collection.items.length || clearPending;
+    departmentTools.hidden = selectedCollection === "recent";
+    saveDepartment.disabled = !active || !collection.loaded || departmentSavePending;
+    saveDepartment.textContent = "Save preview to " + collection.name;
+    undo.hidden = !collection.removed.length;
+  }
+
+  function selectCollection(id) {
+    if (!collections.has(id)) return;
+    selectedCollection = id;
+    tabs.querySelectorAll('[role="tab"]').forEach(tab => {
+      const selected = tab.dataset.collection === id;
+      tab.setAttribute("aria-selected", String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+      if (selected) panel.setAttribute("aria-labelledby", tab.id);
+    });
+    status.textContent = "";
+    pressedAction = null;
+    renderDeferred = false;
+    render();
+    list.scrollTop = 0;
+  }
+
+  tabs.addEventListener("click", event => {
+    const tab = event.target.closest('[role="tab"]');
+    if (tab) selectCollection(tab.dataset.collection);
+  });
+  tabs.addEventListener("keydown", event => {
+    const allTabs = [...tabs.querySelectorAll('[role="tab"]')];
+    const index = allTabs.indexOf(event.target);
+    if (index < 0 || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const next = event.key === "Home" ? 0 : event.key === "End" ? allTabs.length - 1 :
+      (index + (event.key === "ArrowRight" ? 1 : -1) + allTabs.length) % allTabs.length;
+    selectCollection(allTabs[next].dataset.collection);
+    allTabs[next].focus();
+    allTabs[next].scrollIntoView({ block: "nearest", inline: "nearest" });
+  });
 
   // Keep useful editing markup, never event handlers or executable HTML from storage/paste.
   function safeHtml(html) {
@@ -46,13 +110,16 @@
   }
 
   function render() {
+    updateControls();
     // Autosave can finish between pointerdown and click. Keep that button alive.
     if (pressedAction) { renderDeferred = true; return; }
     const focused = document.activeElement;
     const focusId = focused?.dataset.bioId;
     const focusAction = focused?.dataset.action;
     list.replaceChildren();
-    items.forEach(item => {
+    const collectionId = selectedCollection;
+    const collection = collections.get(collectionId);
+    collection.items.forEach(item => {
       const row = document.createElement("li");
       row.className = "recent-bio";
       const details = document.createElement("div");
@@ -74,20 +141,20 @@
         button.dataset.action = action;
         button.setAttribute("aria-label", action + " " + item.name);
         if (action === "Delete") button.className = "ghost";
-        button.addEventListener("click", () => action === "Open" ? openBio(item.id) : removeBio(item.id));
+        button.addEventListener("click", () => action === "Open" ? openBio(item.id, collectionId) : removeBio(item.id, collectionId));
         actions.appendChild(button);
       });
       row.append(details, actions);
       list.appendChild(row);
     });
     updateRecentListHeight();
-    empty.hidden = items.length > 0;
-    clearRecent.disabled = items.length === 0;
-    undo.hidden = removed.length === 0;
+    empty.hidden = collection.items.length > 0;
+    empty.textContent = collectionId === "recent" ? "No recent bios yet. Parse a bio to save it here." :
+      "No bios in " + collection.name + " yet. Parse or open a bio, choose its categories, then save the preview here.";
     if (focusId) {
       const buttons = Array.from(list.querySelectorAll("button"));
       (buttons.find(button => button.dataset.bioId === focusId && button.dataset.action === focusAction) ||
-        buttons[0] || undo).focus();
+        buttons[0] || (undo.hidden ? panel : undo)).focus();
     }
   }
 
@@ -113,14 +180,17 @@
     if (!list.contains(event.relatedTarget)) releaseAction(event);
   });
 
-  function enqueue(operation, message) {
+  function enqueue(operation, message, collectionId = "recent") {
     queue = queue.then(async () => {
       const result = await operation();
-      items = result.items;
-      status.textContent = result.warning || message || "";
+      if (!result) return;
+      const collection = collections.get(collectionId);
+      collection.items = result.items;
+      collection.loaded = true;
+      if (selectedCollection === collectionId) status.textContent = result.warning || message || "";
       render();
     }).catch(() => {
-      status.textContent = "Recent bios could not be saved on this browser. Storage may be full or unavailable. Your current preview and PDF still work.";
+      status.textContent = collections.get(collectionId).name + " could not be saved on this browser. Storage may be full or unavailable. Your current preview and PDF still work.";
     });
     return queue;
   }
@@ -146,7 +216,7 @@
   function storedPhoto() {
     // A photo pasted for the next input must not overwrite the previous saved bio.
     if (photoSource && clean(photoSource) !== clean(active.source)) {
-      return items.find(item => item.id === active.id)?.photoSrc || "";
+      return collections.get(activeCollection).items.find(item => item.id === active.id)?.photoSrc || "";
     }
     const source = photoImg.dataset.placeholder === "true" || photoImg.style.display === "none" ? "" : (photoImg.getAttribute("src") || "");
     if (!source) return "";
@@ -184,9 +254,11 @@
     try { snapshot = capture(); }
     catch (_) { status.textContent = "This bio could not be saved. Your current preview and PDF still work."; return queue; }
     if (!snapshot) return queue;
-    const previous = items.find(item => item.id === snapshot.id);
+    const collectionId = activeCollection;
+    const collection = collections.get(collectionId);
+    const previous = collection.items.find(item => item.id === snapshot.id);
     if (previous && sameSnapshot(previous, snapshot)) return queue;
-    return enqueue(() => history.save(snapshot));
+    return enqueue(() => collection.store.save(snapshot), "", collectionId);
   }
 
   function scheduleSave() {
@@ -195,11 +267,12 @@
     saveTimer = setTimeout(saveActive, 450);
   }
 
-  async function openBio(id) {
+  async function openBio(id, collectionId) {
     await saveActive();
-    const item = items.find(item => item.id === id);
+    const item = collections.get(collectionId).items.find(item => item.id === id);
     if (!item) return;
     restoring = true;
+    activeCollection = collectionId;
     active = { id: item.id, identity: item.identity, source: item.source, createdAt: item.createdAt };
     displayedIdentity = item.identity;
     rawInput.value = item.source;
@@ -219,6 +292,7 @@
     editToggle.checked = item.editable;
     editToggle.dispatchEvent(new Event("change"));
     restoring = false;
+    updateControls();
     ensureBackgroundClears();
     document.getElementById("nameField").setAttribute("tabindex", "-1");
     document.getElementById("nameField").focus({ preventScroll: true });
@@ -226,29 +300,64 @@
     saveActive();
   }
 
-  function removeBio(id) {
-    clearTimeout(saveTimer);
-    if (active?.id === id) active = null;
+  function removeBio(id, collectionId) {
+    if (active?.id === id && activeCollection === collectionId) {
+      clearTimeout(saveTimer);
+      active = null;
+    }
     enqueue(async () => {
-      removed = items.filter(item => item.id === id);
-      return history.remove(id);
-    }, "Bio removed. Use Undo removal to restore it.");
+      const collection = collections.get(collectionId);
+      const removed = collection.items.filter(item => item.id === id);
+      if (!removed.length) return;
+      const result = await collection.store.remove(id);
+      collection.removed = removed;
+      return result;
+    }, "Bio removed. Use Undo removal to restore it.", collectionId);
   }
 
   clearRecent.addEventListener("click", () => {
-    clearTimeout(saveTimer);
-    active = null;
+    // Guard the action too: a synthetic/stale click must never clear a department.
+    if (selectedCollection !== "recent" || !collections.get("recent").items.length || clearPending) return;
+    clearPending = true;
+    if (activeCollection === "recent") { clearTimeout(saveTimer); active = null; }
+    updateControls();
     enqueue(async () => {
-      removed = items.slice();
-      return history.clear();
-    }, "Recent bios cleared. Use Undo removal to restore them.");
+      const collection = collections.get("recent");
+      const removed = collection.items.slice();
+      const result = await history.clear();
+      collection.removed = removed;
+      return result;
+    }, "Recent bios cleared. Use Undo removal to restore them.").finally(() => {
+      clearPending = false;
+      updateControls();
+    });
   });
   undo.addEventListener("click", () => {
+    const collectionId = selectedCollection;
     enqueue(async () => {
-      const result = await history.restore(removed);
-      removed = [];
+      const collection = collections.get(collectionId);
+      if (!collection.removed.length) return;
+      const result = await collection.store.restore(collection.removed);
+      collection.removed = [];
       return result;
-    }, "Recent bios restored.");
+    }, "Bios restored.", collectionId);
+  });
+
+  saveDepartment.addEventListener("click", () => {
+    const collectionId = selectedCollection;
+    if (collectionId === "recent" || !active || departmentSavePending || !collections.get(collectionId).loaded) return;
+    let snapshot;
+    try { snapshot = capture(); }
+    catch (_) { status.textContent = "This preview could not be saved."; return; }
+    if (!snapshot) return;
+    saveActive();
+    departmentSavePending = true;
+    updateControls();
+    enqueue(() => collections.get(collectionId).store.save(snapshot),
+      "Preview saved to " + collections.get(collectionId).name + ". Open it here to edit the saved copy.", collectionId).finally(() => {
+      departmentSavePending = false;
+      updateControls();
+    });
   });
 
   // Flush the old preview before a new parse or a clear replaces it.
@@ -265,15 +374,18 @@
       cachedPhotoSource = cachedPhoto = photoSource = "";
     }
     displayedIdentity = identity;
-    const existing = items.find(item => item.identity === identity || clean(item.source) === clean(source));
+    activeCollection = "recent";
+    const existing = collections.get("recent").items.find(item => item.identity === identity || clean(item.source) === clean(source));
     active = {
       id: existing?.id || (window.crypto?.randomUUID?.() || "bio-" + Date.now() + "-" + Math.random().toString(36).slice(2)),
       identity, source, createdAt: existing?.createdAt || Date.now()
     };
+    updateControls();
     saveActive();
   });
   document.getElementById("clearBtn").addEventListener("click", () => {
     saveActive(); active = null; displayedIdentity = ""; photoSource = "";
+    updateControls();
   }, true);
   pageInner.addEventListener("input", scheduleSave);
   pageInner.addEventListener("focusout", event => {
@@ -295,5 +407,5 @@
   window.addEventListener("pagehide", saveActive);
   window.addEventListener("resize", updateRecentListHeight);
   document.addEventListener("visibilitychange", () => { if (document.hidden) saveActive(); });
-  enqueue(() => history.list());
+  collections.forEach((collection, id) => enqueue(() => collection.store.list(), "", id));
 })();
