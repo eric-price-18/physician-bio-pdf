@@ -119,6 +119,11 @@ textarea {
     background-color 0.15s ease;
 }
 
+#rawInput {
+  height: 175px;
+  min-height: 175px;
+}
+
 textarea:focus {
   outline: none;
   border-color: var(--accent-color);
