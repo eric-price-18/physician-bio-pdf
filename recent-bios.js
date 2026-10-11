@@ -210,8 +210,28 @@
 
   // Bundled department presets never read or write browser storage. Existing local
   // copies remain untouched; each read returns a detached snapshot for preview use.
+  function presetNameParts(item) {
+    // Prefer explicit structured names when a future preset provides them.
+    // Display names use "Given Family, credentials"; omit titles and suffixes.
+    const display = item.name.split(",")[0].trim().replace(/^(?:Dr\.?|Professor)\s+/i, "");
+    const words = display.split(/\s+/);
+    const suffix = /^(?:MD|M\.D\.|DO|D\.O\.|PhD|BMBCh|MBBS|MBChB|FACC|FRCP|Jr\.?|Sr\.?|II|III|IV)$/i;
+    while (words.length > 1 && suffix.test(words[words.length - 1])) words.pop();
+    return [item.lastName?.trim() || words.at(-1) || "",
+      item.firstName?.trim() || words.slice(0, -1).join(" "), display];
+  }
+
+  function comparePresetNames(a, b) {
+    const left = presetNameParts(a), right = presetNameParts(b);
+    for (let index = 0; index < left.length; index++) {
+      const order = left[index].localeCompare(right[index], "en", { sensitivity: "base", numeric: true });
+      if (order) return order;
+    }
+    return a.id.localeCompare(b.id, "en");
+  }
+
   function createPresetStore(defaults = []) {
-    const items = JSON.stringify(normalize(defaults, Infinity));
+    const items = JSON.stringify(normalize(defaults, Infinity).sort(comparePresetNames));
     return Object.freeze({ list: async () => ({ items: JSON.parse(items), warning: "" }) });
   }
 
