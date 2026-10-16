@@ -450,7 +450,10 @@ button.ghost:hover {
   display: none;
 }
 
-.field.clear-float {
+/* Bio and all later sections stay below the photo, including when Bio is hidden. */
+.field.clear-float,
+.field[data-field="background"],
+.field[data-field="background"] ~ .field {
   clear: left;
 }
 
