@@ -1315,6 +1315,28 @@ document.getElementById("clearBtn").addEventListener("click", () => {
    PDF download & print
    ============================================================ */
 
+// Layout padding can extend the capture past a PDF page even when all visible
+// content fits. Drop only completely white/transparent trailing slices; keep
+// every painted pixel, including faint text and content on a later page.
+function getPdfPageCount(canvas, pxPageHeight) {
+  let pages = Math.max(1, Math.ceil(canvas.height / pxPageHeight));
+  const ctx = canvas.getContext("2d");
+
+  while (pages > 1) {
+    const top = (pages - 1) * pxPageHeight;
+    const height = Math.min(pxPageHeight, canvas.height - top);
+    const pixels = ctx.getImageData(0, top, canvas.width, height).data;
+    for (let i = 0; i < pixels.length; i += 4) {
+      if (pixels[i + 3] !== 0 &&
+          (pixels[i] !== 255 || pixels[i + 1] !== 255 || pixels[i + 2] !== 255)) {
+        return pages;
+      }
+    }
+    pages--;
+  }
+  return pages;
+}
+
 const downloadBtn = document.getElementById("downloadBtn");
 const printBtn = document.getElementById("printBtn");
 
@@ -1357,15 +1379,13 @@ downloadBtn.addEventListener("click", async () => {
   const pageHeight = doc.internal.pageSize.getHeight();
 
   const imgWidth = pageWidth - margin * 2;
-  const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
   const usablePageHeight = pageHeight - margin * 2;
-  const totalPages = Math.ceil(imgHeight / usablePageHeight);
 
   const pageCanvas = document.createElement("canvas");
   const pageCtx = pageCanvas.getContext("2d");
 
   const pxPageHeight = Math.floor((usablePageHeight * canvas.width) / imgWidth);
+  const totalPages = getPdfPageCount(canvas, pxPageHeight);
   pageCanvas.width = canvas.width;
 
   for (let page = 0; page < totalPages; page++) {
@@ -1459,3 +1479,4 @@ window.addEventListener("load", () => {
 window.addEventListener("resize", debounce(() => {
   ensureBackgroundClears();
 }, 150));
+
