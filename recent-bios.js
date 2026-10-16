@@ -5,7 +5,7 @@
   const DB_NAME = "physician-bio-pdf-history";
   const KEY = "physician-bio-pdf:recent:v1";
   // Keep the original storage ID when the owner renames the department.
-  const DEPARTMENTS = [{ id: "front-desk", name: "Cath Lab" }];
+  const DEPARTMENTS = [{ id: "front-desk", name: "Cath Lab" }, { id: "general-surgery", name: "General Surgery" }];
   const FIELD_IDS = ["nameField", "credentialsField", "specialtyField", "affiliationsField",
     "languagesField", "genderField", "academicTitleField", "backgroundField", "titlesList",
     "educationList", "certificationsList", "membershipsList", "locationsField"];
@@ -239,3 +239,4 @@
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.RecentBios = api;
 })(typeof window !== "undefined" ? window : globalThis);
+
